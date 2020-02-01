@@ -13,7 +13,14 @@ namespace NBWebExplorerWebKit
         public OptionsForm(WebBrowserTabPage webBrowserTabPage)
             : this()
         {
-            homePageTextBox.Tag = webBrowserTabPage.Browser.Url.OriginalString;
+            try
+            {
+                homePageTextBox.Tag = webBrowserTabPage.Browser.Url.OriginalString;
+            }
+            catch
+            {
+                homePageTextBox.Tag = "about:blank";
+            }
         }
 
         private void OptionForm_Load(object sender, EventArgs e)
