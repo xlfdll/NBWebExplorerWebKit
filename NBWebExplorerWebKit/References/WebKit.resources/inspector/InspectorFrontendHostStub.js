@@ -30,12 +30,17 @@
 
 if (!window.InspectorFrontendHost) {
 
+/**
+ * @constructor
+ * @implements {InspectorFrontendHostAPI}
+ */
 WebInspector.InspectorFrontendHostStub = function()
 {
     this._attachedWindowHeight = 0;
+    this.isStub = true;
+    this._fileBuffers = {};
+    WebInspector.documentCopyEventFired = this.documentCopy.bind(this);
 }
-
-WebInspector._platformFlavor = WebInspector.PlatformFlavor.MacLeopard;
 
 WebInspector.InspectorFrontendHostStub.prototype = {
     platform: function()
@@ -64,16 +69,9 @@ WebInspector.InspectorFrontendHostStub.prototype = {
         this._windowVisible = false;
     },
 
-    attach: function()
+    requestSetDockSide: function(side)
     {
-    },
-
-    detach: function()
-    {
-    },
-
-    search: function(sourceRow, query)
-    {
+        InspectorFrontendAPI.setDockSide(side);
     },
 
     setAttachedWindowHeight: function(height)
@@ -81,6 +79,10 @@ WebInspector.InspectorFrontendHostStub.prototype = {
     },
 
     moveWindowBy: function(x, y)
+    {
+    },
+
+    setInjectedScriptForOrigin: function(origin, script)
     {
     },
 
@@ -95,23 +97,186 @@ WebInspector.InspectorFrontendHostStub.prototype = {
 
     hiddenPanels: function()
     {
-        return "";
+        return WebInspector.queryParamsObject["hiddenPanels"] || "";
     },
 
     inspectedURLChanged: function(url)
     {
+        document.title = WebInspector.UIString(Preferences.applicationTitle, url);
     },
 
-    copyText: function()
+    documentCopy: function(event)
+    {
+        if (!this._textToCopy)
+            return;
+        event.clipboardData.setData("text", this._textToCopy);
+        event.preventDefault();
+        delete this._textToCopy;
+    },
+
+    copyText: function(text)
+    {
+        this._textToCopy = text;
+        if (!document.execCommand("copy")) {
+            var screen = new WebInspector.ClipboardAccessDeniedScreen();
+            screen.showModal();
+        }
+    },
+
+    openInNewTab: function(url)
+    {
+        window.open(url, "_blank");
+    },
+
+    canSave: function()
+    {
+        return true;
+    },
+
+    save: function(url, content, forceSaveAs)
+    {
+        if (this._fileBuffers[url])
+            throw new Error("Concurrent file modification denied.");
+
+        this._fileBuffers[url] = [content];
+        setTimeout(WebInspector.fileManager.savedURL.bind(WebInspector.fileManager, url), 0);
+    },
+
+    append: function(url, content)
+    {
+        var buffer = this._fileBuffers[url];
+        if (!buffer)
+            throw new Error("File is not open for write yet.");
+
+        buffer.push(content);
+        setTimeout(WebInspector.fileManager.appendedToURL.bind(WebInspector.fileManager, url), 0);
+    },
+
+    close: function(url)
+    {
+        var content = this._fileBuffers[url];
+        delete this._fileBuffers[url];
+
+        if (!content)
+            return;
+
+        var lastSlashIndex = url.lastIndexOf("/");
+        var fileNameSuffix = (lastSlashIndex === -1) ? url : url.substring(lastSlashIndex + 1);
+
+        var blob = new Blob(content, { type: "application/octet-stream" });
+        var objectUrl = window.URL.createObjectURL(blob);
+        window.location = objectUrl + "#" + fileNameSuffix;
+
+        function cleanup()
+        {
+            window.URL.revokeObjectURL(objectUrl);
+        }
+        setTimeout(cleanup, 0);
+    },
+
+    sendMessageToBackend: function(message)
     {
     },
 
-    canAttachWindow: function()
+    recordActionTaken: function(actionCode)
+    {
+    },
+
+    recordPanelShown: function(panelCode)
+    {
+    },
+
+    recordSettingChanged: function(settingCode)
+    {
+    },
+
+    loadResourceSynchronously: function(url)
+    {
+        return loadXHR(url);
+    },
+
+    supportsFileSystems: function()
+    {
+        return false;
+    },
+
+    requestFileSystems: function()
+    {
+    },
+
+    addFileSystem: function()
+    {
+    },
+
+    removeFileSystem: function(fileSystemPath)
+    {
+    },
+
+    isolatedFileSystem: function(fileSystemId, registeredName)
+    {
+        return null;
+    },
+
+    setZoomFactor: function(zoom)
+    {
+    },
+
+    canInspectWorkers: function()
+    {
+        return true;
+    },
+
+    isUnderTest: function()
     {
         return false;
     }
 }
 
 InspectorFrontendHost = new WebInspector.InspectorFrontendHostStub();
+Preferences.localizeUI = false;
 
+// Default implementation; platforms will override.
+WebInspector.clipboardAccessDeniedMessage = function()
+{
+    return "";
+}
+
+/**
+ * @constructor
+ * @extends {WebInspector.HelpScreen}
+ */
+WebInspector.ClipboardAccessDeniedScreen = function()
+{
+    WebInspector.HelpScreen.call(this, WebInspector.UIString("Clipboard access is denied"));
+    var platformMessage = WebInspector.clipboardAccessDeniedMessage();
+    if (platformMessage) {
+        var p = this.contentElement.createChild("p");
+        p.addStyleClass("help-section");
+        p.textContent = platformMessage;
+    }
+}
+
+WebInspector.ClipboardAccessDeniedScreen.prototype = {
+    __proto__: WebInspector.HelpScreen.prototype
+}
+
+}
+
+/**
+ * @constructor
+ * @extends {WebInspector.HelpScreen}
+ */
+WebInspector.RemoteDebuggingTerminatedScreen = function(reason)
+{
+    WebInspector.HelpScreen.call(this, WebInspector.UIString("Detached from the target"));
+    var p = this.contentElement.createChild("p");
+    p.addStyleClass("help-section");
+    p.createChild("span").textContent = "Remote debugging has been terminated with reason: ";
+    p.createChild("span", "error-message").textContent = reason;
+    p.createChild("br");
+    p.createChild("span").textContent = "Please re-attach to the new target.";
+}
+
+WebInspector.RemoteDebuggingTerminatedScreen.prototype = {
+    __proto__: WebInspector.HelpScreen.prototype
 }

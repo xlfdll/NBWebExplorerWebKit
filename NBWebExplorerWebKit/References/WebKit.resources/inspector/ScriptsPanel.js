@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2008 Apple Inc. All Rights Reserved.
+ * Copyright (C) 2011 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,126 +24,119 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-WebInspector.ScriptsPanel = function()
+importScript("BreakpointsSidebarPane.js");
+importScript("CallStackSidebarPane.js");
+importScript("FilteredItemSelectionDialog.js");
+importScript("JavaScriptSourceFrame.js");
+importScript("NavigatorOverlayController.js");
+importScript("NavigatorView.js");
+importScript("RevisionHistoryView.js");
+importScript("ScopeChainSidebarPane.js");
+importScript("ScriptsNavigator.js");
+importScript("ScriptsSearchScope.js");
+importScript("SnippetJavaScriptSourceFrame.js");
+importScript("StyleSheetOutlineDialog.js");
+importScript("TabbedEditorContainer.js");
+importScript("UISourceCodeFrame.js");
+importScript("WatchExpressionsSidebarPane.js");
+importScript("WorkersSidebarPane.js");
+
+/**
+ * @constructor
+ * @implements {WebInspector.TabbedEditorContainerDelegate}
+ * @implements {WebInspector.ContextMenu.Provider}
+ * @extends {WebInspector.Panel}
+ * @param {WebInspector.Workspace=} workspaceForTest
+ */
+WebInspector.ScriptsPanel = function(workspaceForTest)
 {
     WebInspector.Panel.call(this, "scripts");
+    this.registerRequiredCSS("scriptsPanel.css");
 
-    this.topStatusBar = document.createElement("div");
-    this.topStatusBar.className = "status-bar";
-    this.topStatusBar.id = "scripts-status-bar";
-    this.element.appendChild(this.topStatusBar);
+    WebInspector.settings.navigatorWasOnceHidden = WebInspector.settings.createSetting("navigatorWasOnceHidden", false);
+    WebInspector.settings.debuggerSidebarHidden = WebInspector.settings.createSetting("debuggerSidebarHidden", false);
 
-    this.backButton = document.createElement("button");
-    this.backButton.className = "status-bar-item";
-    this.backButton.id = "scripts-back";
-    this.backButton.title = WebInspector.UIString("Show the previous script resource.");
-    this.backButton.disabled = true;
-    this.backButton.appendChild(document.createElement("img"));
-    this.backButton.addEventListener("click", this._goBack.bind(this), false);
-    this.topStatusBar.appendChild(this.backButton);
+    this._workspace = workspaceForTest || WebInspector.workspace;
 
-    this.forwardButton = document.createElement("button");
-    this.forwardButton.className = "status-bar-item";
-    this.forwardButton.id = "scripts-forward";
-    this.forwardButton.title = WebInspector.UIString("Show the next script resource.");
-    this.forwardButton.disabled = true;
-    this.forwardButton.appendChild(document.createElement("img"));
-    this.forwardButton.addEventListener("click", this._goForward.bind(this), false);
-    this.topStatusBar.appendChild(this.forwardButton);
+    function viewGetter()
+    {
+        return this.visibleView;
+    }
+    WebInspector.GoToLineDialog.install(this, viewGetter.bind(this));
 
-    this.filesSelectElement = document.createElement("select");
-    this.filesSelectElement.className = "status-bar-item";
-    this.filesSelectElement.id = "scripts-files";
-    this.filesSelectElement.addEventListener("change", this._changeVisibleFile.bind(this), false);
-    this.topStatusBar.appendChild(this.filesSelectElement);
+    var helpSection = WebInspector.shortcutsScreen.section(WebInspector.UIString("Sources Panel"));
+    this.debugToolbar = this._createDebugToolbar();
 
-    this.functionsSelectElement = document.createElement("select");
-    this.functionsSelectElement.className = "status-bar-item";
-    this.functionsSelectElement.id = "scripts-functions";
+    const initialDebugSidebarWidth = 225;
+    const minimumDebugSidebarWidthPercent = 50;
+    this.createSidebarView(this.element, WebInspector.SidebarView.SidebarPosition.End, initialDebugSidebarWidth);
+    this.splitView.element.id = "scripts-split-view";
+    this.splitView.setMinimumSidebarWidth(Preferences.minScriptsSidebarWidth);
+    this.splitView.setMinimumMainWidthPercent(minimumDebugSidebarWidthPercent);
 
-    // FIXME: append the functions select element to the top status bar when it is implemented.
-    // this.topStatusBar.appendChild(this.functionsSelectElement);
+    this.sidebarElement.appendChild(this.debugToolbar);
 
-    this.sidebarButtonsElement = document.createElement("div");
-    this.sidebarButtonsElement.id = "scripts-sidebar-buttons";
-    this.topStatusBar.appendChild(this.sidebarButtonsElement);
+    this.debugSidebarResizeWidgetElement = document.createElement("div");
+    this.debugSidebarResizeWidgetElement.id = "scripts-debug-sidebar-resizer-widget";
+    this.splitView.installResizer(this.debugSidebarResizeWidgetElement);
 
-    this.pauseButton = document.createElement("button");
-    this.pauseButton.className = "status-bar-item";
-    this.pauseButton.id = "scripts-pause";
-    this.pauseButton.title = WebInspector.UIString("Pause script execution.");
-    this.pauseButton.disabled = true;
-    this.pauseButton.appendChild(document.createElement("img"));
-    this.pauseButton.addEventListener("click", this._togglePause.bind(this), false);
-    this.sidebarButtonsElement.appendChild(this.pauseButton);
+    // Create scripts navigator
+    const initialNavigatorWidth = 225;
+    const minimumViewsContainerWidthPercent = 50;
+    this.editorView = new WebInspector.SidebarView(WebInspector.SidebarView.SidebarPosition.Start, "scriptsPanelNavigatorSidebarWidth", initialNavigatorWidth);
+    this.editorView.element.tabIndex = 0;
 
-    this.stepOverButton = document.createElement("button");
-    this.stepOverButton.className = "status-bar-item";
-    this.stepOverButton.id = "scripts-step-over";
-    this.stepOverButton.title = WebInspector.UIString("Step over next function call.");
-    this.stepOverButton.disabled = true;
-    this.stepOverButton.addEventListener("click", this._stepOverClicked.bind(this), false);
-    this.stepOverButton.appendChild(document.createElement("img"));
-    this.sidebarButtonsElement.appendChild(this.stepOverButton);
+    this.editorView.setMinimumSidebarWidth(Preferences.minScriptsSidebarWidth);
+    this.editorView.setMinimumMainWidthPercent(minimumViewsContainerWidthPercent);
+    this.editorView.show(this.splitView.mainElement);
 
-    this.stepIntoButton = document.createElement("button");
-    this.stepIntoButton.className = "status-bar-item";
-    this.stepIntoButton.id = "scripts-step-into";
-    this.stepIntoButton.title = WebInspector.UIString("Step into next function call.");
-    this.stepIntoButton.disabled = true;
-    this.stepIntoButton.addEventListener("click", this._stepIntoClicked.bind(this), false);
-    this.stepIntoButton.appendChild(document.createElement("img"));
-    this.sidebarButtonsElement.appendChild(this.stepIntoButton);
+    this._navigator = new WebInspector.ScriptsNavigator();
+    this._navigator.view.show(this.editorView.sidebarElement);
 
-    this.stepOutButton = document.createElement("button");
-    this.stepOutButton.className = "status-bar-item";
-    this.stepOutButton.id = "scripts-step-out";
-    this.stepOutButton.title = WebInspector.UIString("Step out of current function.");
-    this.stepOutButton.disabled = true;
-    this.stepOutButton.addEventListener("click", this._stepOutClicked.bind(this), false);
-    this.stepOutButton.appendChild(document.createElement("img"));
-    this.sidebarButtonsElement.appendChild(this.stepOutButton);
+    this._editorContainer = new WebInspector.TabbedEditorContainer(this, "previouslyViewedFiles");
+    this._editorContainer.show(this.editorView.mainElement);
 
-    this.toggleBreakpointsButton = new WebInspector.StatusBarButton("", "toggle-breakpoints");
-    this.toggleBreakpointsButton.addEventListener("click", this._toggleBreakpointsClicked.bind(this), false);
-    this.sidebarButtonsElement.appendChild(this.toggleBreakpointsButton.element);
-    // Breakpoints should be activated by default, so emulate a click to toggle on.
-    this._toggleBreakpointsClicked();
+    this._navigatorController = new WebInspector.NavigatorOverlayController(this.editorView, this._navigator.view, this._editorContainer.view);
 
-    this.debuggerStatusElement = document.createElement("div");
-    this.debuggerStatusElement.id = "scripts-debugger-status";
-    this.sidebarButtonsElement.appendChild(this.debuggerStatusElement);
+    this._navigator.addEventListener(WebInspector.ScriptsNavigator.Events.ScriptSelected, this._scriptSelected, this);
+    this._navigator.addEventListener(WebInspector.ScriptsNavigator.Events.SnippetCreationRequested, this._snippetCreationRequested, this);
+    this._navigator.addEventListener(WebInspector.ScriptsNavigator.Events.ItemRenamingRequested, this._itemRenamingRequested, this);
+    this._navigator.addEventListener(WebInspector.ScriptsNavigator.Events.FileRenamed, this._fileRenamed, this);
 
-    this.viewsContainerElement = document.createElement("div");
-    this.viewsContainerElement.id = "script-resource-views";
+    this._editorContainer.addEventListener(WebInspector.TabbedEditorContainer.Events.EditorSelected, this._editorSelected, this);
+    this._editorContainer.addEventListener(WebInspector.TabbedEditorContainer.Events.EditorClosed, this._editorClosed, this);
 
-    this.sidebarElement = document.createElement("div");
-    this.sidebarElement.id = "scripts-sidebar";
+    this.splitView.mainElement.appendChild(this.debugSidebarResizeWidgetElement);
+    this.splitView.mainElement.addEventListener("contextmenu", this._contextMenuEventFired.bind(this), false);
 
-    this.sidebarResizeElement = document.createElement("div");
-    this.sidebarResizeElement.className = "sidebar-resizer-vertical";
-    this.sidebarResizeElement.addEventListener("mousedown", this._startSidebarResizeDrag.bind(this), false);
-
-    this.sidebarResizeWidgetElement = document.createElement("div");
-    this.sidebarResizeWidgetElement.id = "scripts-sidebar-resizer-widget";
-    this.sidebarResizeWidgetElement.addEventListener("mousedown", this._startSidebarResizeDrag.bind(this), false);
-    this.topStatusBar.appendChild(this.sidebarResizeWidgetElement);
+    this.splitView.sidebarElement.addEventListener("contextmenu", this._sidebarContextMenuEventFired.bind(this), false);
 
     this.sidebarPanes = {};
     this.sidebarPanes.watchExpressions = new WebInspector.WatchExpressionsSidebarPane();
     this.sidebarPanes.callstack = new WebInspector.CallStackSidebarPane();
     this.sidebarPanes.scopechain = new WebInspector.ScopeChainSidebarPane();
-    this.sidebarPanes.breakpoints = new WebInspector.BreakpointsSidebarPane();
-    this.sidebarPanes.workers = new WebInspector.WorkersSidebarPane();
+    this.sidebarPanes.jsBreakpoints = new WebInspector.JavaScriptBreakpointsSidebarPane(WebInspector.breakpointManager, this._showSourceLine.bind(this));
+    this.sidebarPanes.domBreakpoints = WebInspector.domBreakpointsSidebarPane.createProxy(this);
+    this.sidebarPanes.xhrBreakpoints = new WebInspector.XHRBreakpointsSidebarPane();
+    this.sidebarPanes.eventListenerBreakpoints = new WebInspector.EventListenerBreakpointsSidebarPane();
 
-    for (var pane in this.sidebarPanes)
-        this.sidebarElement.appendChild(this.sidebarPanes[pane].element);
+    if (InspectorFrontendHost.canInspectWorkers() && !WebInspector.WorkerManager.isWorkerFrontend()) {
+        WorkerAgent.enable();
+        this.sidebarPanes.workerList = new WebInspector.WorkersSidebarPane(WebInspector.workerManager);
+    }
 
-    this.sidebarPanes.callstack.expanded = true;
-    this.sidebarPanes.callstack.addEventListener("call frame selected", this._callFrameSelected, this);
+    this._splitDirectionSetting = WebInspector.settings.createSetting(this.name + "PanelSplitHorizontally", false);
+    this._splitDirectionSetting.addChangeListener(this._arrangeSidebarPanes.bind(this));
 
-    this.sidebarPanes.scopechain.expanded = true;
-    this.sidebarPanes.breakpoints.expanded = true;
+    this._splitSidebarSetting = WebInspector.settings.createSetting(this.name + "PanelSplitSidebar", false);
+    this._splitSidebarSetting.addChangeListener(this._arrangeSidebarPanes.bind(this));
+
+    this._arrangeSidebarPanes();
+
+    this.sidebarPanes.callstack.registerShortcuts(this.registerShortcuts.bind(this));
+    this.registerShortcuts(WebInspector.ScriptsPanelDescriptor.ShortcutKeys.EvaluateSelectionInConsole, this._evaluateSelectionInConsole.bind(this));
+    this.registerShortcuts(WebInspector.ScriptsPanelDescriptor.ShortcutKeys.GoToMember, this._showOutlineDialog.bind(this));
+    this.registerShortcuts(WebInspector.ScriptsPanelDescriptor.ShortcutKeys.ToggleBreakpoint, this._toggleBreakpoint.bind(this));
 
     var panelEnablerHeading = WebInspector.UIString("You need to enable debugging before you can use the Scripts panel.");
     var panelEnablerDisclaimer = WebInspector.UIString("Enabling debugging will make scripts run slower.");
@@ -151,50 +145,62 @@ WebInspector.ScriptsPanel = function()
     this.panelEnablerView = new WebInspector.PanelEnablerView("scripts", panelEnablerHeading, panelEnablerDisclaimer, panelEnablerButton);
     this.panelEnablerView.addEventListener("enable clicked", this._enableDebugging, this);
 
-    this.element.appendChild(this.panelEnablerView.element);
-    this.element.appendChild(this.viewsContainerElement);
-    this.element.appendChild(this.sidebarElement);
-    this.element.appendChild(this.sidebarResizeElement);
-
     this.enableToggleButton = new WebInspector.StatusBarButton("", "enable-toggle-status-bar-item");
-    this.enableToggleButton.addEventListener("click", this._toggleDebugging.bind(this), false);
+    this.enableToggleButton.addEventListener("click", this._toggleDebugging, this);
+    if (!Capabilities.debuggerCausesRecompilation)
+        this.enableToggleButton.element.addStyleClass("hidden");
 
     this._pauseOnExceptionButton = new WebInspector.StatusBarButton("", "scripts-pause-on-exceptions-status-bar-item", 3);
-    this._pauseOnExceptionButton.addEventListener("click", this._togglePauseOnExceptions.bind(this), false);
-    this._pauseOnExceptionButton.state = WebInspector.ScriptsPanel.PauseOnExceptionsState.DontPauseOnExceptions;
-    this._pauseOnExceptionButton.title = WebInspector.UIString("Don't pause on exceptions.\nClick to Pause on all exceptions."); 
+    this._pauseOnExceptionButton.addEventListener("click", this._togglePauseOnExceptions, this);
 
-    this._registerShortcuts();
+    this._toggleFormatSourceButton = new WebInspector.StatusBarButton(WebInspector.UIString("Pretty print"), "scripts-toggle-pretty-print-status-bar-item");
+    this._toggleFormatSourceButton.toggled = false;
+    this._toggleFormatSourceButton.addEventListener("click", this._toggleFormatSource, this);
 
-    this._debuggerEnabled = Preferences.debuggerAlwaysEnabled;
+    this._scriptViewStatusBarItemsContainer = document.createElement("div");
+    this._scriptViewStatusBarItemsContainer.style.display = "inline-block";
 
-    WebInspector.breakpointManager.addEventListener("breakpoint-added", this._breakpointAdded, this);
-    WebInspector.breakpointManager.addEventListener("breakpoint-removed", this._breakpointRemoved, this);
+    this._installDebuggerSidebarController();
 
-    this.reset();
+    this._sourceFramesByUISourceCode = new Map();
+    this._updateDebuggerButtons();
+    this._pauseOnExceptionStateChanged();
+    if (WebInspector.debuggerModel.isPaused())
+        this._debuggerPaused();
+
+    WebInspector.settings.pauseOnExceptionStateString.addChangeListener(this._pauseOnExceptionStateChanged, this);
+    WebInspector.debuggerModel.addEventListener(WebInspector.DebuggerModel.Events.DebuggerWasEnabled, this._debuggerWasEnabled, this);
+    WebInspector.debuggerModel.addEventListener(WebInspector.DebuggerModel.Events.DebuggerWasDisabled, this._debuggerWasDisabled, this);
+    WebInspector.debuggerModel.addEventListener(WebInspector.DebuggerModel.Events.DebuggerPaused, this._debuggerPaused, this);
+    WebInspector.debuggerModel.addEventListener(WebInspector.DebuggerModel.Events.DebuggerResumed, this._debuggerResumed, this);
+    WebInspector.debuggerModel.addEventListener(WebInspector.DebuggerModel.Events.CallFrameSelected, this._callFrameSelected, this);
+    WebInspector.debuggerModel.addEventListener(WebInspector.DebuggerModel.Events.ConsoleCommandEvaluatedInSelectedCallFrame, this._consoleCommandEvaluatedInSelectedCallFrame, this);
+    WebInspector.debuggerModel.addEventListener(WebInspector.DebuggerModel.Events.ExecutionLineChanged, this._executionLineChanged, this);
+    WebInspector.debuggerModel.addEventListener(WebInspector.DebuggerModel.Events.BreakpointsActiveStateChanged, this._breakpointsActiveStateChanged, this);
+
+    WebInspector.startBatchUpdate();
+    var uiSourceCodes = this._workspace.uiSourceCodes();
+    for (var i = 0; i < uiSourceCodes.length; ++i)
+        this._addUISourceCode(uiSourceCodes[i]);
+    WebInspector.endBatchUpdate();
+
+    this._workspace.addEventListener(WebInspector.UISourceCodeProvider.Events.UISourceCodeAdded, this._uiSourceCodeAdded, this);
+    this._workspace.addEventListener(WebInspector.UISourceCodeProvider.Events.UISourceCodeRemoved, this._uiSourceCodeRemoved, this);
+    this._workspace.addEventListener(WebInspector.Workspace.Events.ProjectWillReset, this._projectWillReset.bind(this), this);
+    WebInspector.debuggerModel.addEventListener(WebInspector.DebuggerModel.Events.GlobalObjectCleared, this._debuggerReset, this);
+
+    WebInspector.advancedSearchController.registerSearchScope(new WebInspector.ScriptsSearchScope(this._workspace));
 }
 
-// Keep these in sync with WebCore::ScriptDebugServer
-WebInspector.ScriptsPanel.PauseOnExceptionsState = {
-    DontPauseOnExceptions : 0,
-    PauseOnAllExceptions : 1,
-    PauseOnUncaughtExceptions: 2
-};
-
 WebInspector.ScriptsPanel.prototype = {
-    get toolbarItemLabel()
-    {
-        return WebInspector.UIString("Scripts");
-    },
-
     get statusBarItems()
     {
-        return [this.enableToggleButton.element, this._pauseOnExceptionButton.element];
+        return [this.enableToggleButton.element, this._pauseOnExceptionButton.element, this._toggleFormatSourceButton.element, this._scriptViewStatusBarItemsContainer];
     },
 
-    get defaultFocusedElement()
+    defaultFocusedElement: function()
     {
-        return this.filesSelectElement;
+        return this._navigator.view.defaultFocusedElement();
     },
 
     get paused()
@@ -202,644 +208,404 @@ WebInspector.ScriptsPanel.prototype = {
         return this._paused;
     },
 
-    show: function()
+    wasShown: function()
     {
-        WebInspector.Panel.prototype.show.call(this);
-        this.sidebarResizeElement.style.right = (this.sidebarElement.offsetWidth - 3) + "px";
-
-        if (this.visibleView) {
-            if (this.visibleView instanceof WebInspector.ResourceView)
-                this.visibleView.headersVisible = false;
-            this.visibleView.show(this.viewsContainerElement);
-        }
-        if (this._attachDebuggerWhenShown) {
-            InspectorBackend.enableDebugger(false);
-            delete this._attachDebuggerWhenShown;
-        }
-    },
-    
-    hide: function()
-    {
-        if (this.visibleView)
-            this.visibleView.hide();
-        WebInspector.Panel.prototype.hide.call(this);
+        WebInspector.Panel.prototype.wasShown.call(this);
+        this._navigatorController.wasShown();
     },
 
-    get searchableViews()
+    willHide: function()
     {
-        return [ this.visibleView ];
+        WebInspector.Panel.prototype.willHide.call(this);
+        WebInspector.closeViewInDrawer();
     },
 
-    get breakpointsActivated()
+    /**
+     * @param {WebInspector.Event} event
+     */
+    _uiSourceCodeAdded: function(event)
     {
-        return this.toggleBreakpointsButton.toggled;
+        var uiSourceCode = /** @type {WebInspector.UISourceCode} */ (event.data);
+        this._addUISourceCode(uiSourceCode);
     },
 
-    addScript: function(sourceID, sourceURL, source, startingLine, errorLine, errorMessage, scriptWorldType)
+    /**
+     * @param {WebInspector.UISourceCode} uiSourceCode
+     */
+    _addUISourceCode: function(uiSourceCode)
     {
-        var script = new WebInspector.Script(sourceID, sourceURL, source, startingLine, errorLine, errorMessage, scriptWorldType);
-        this._sourceIDMap[sourceID] = script;
-
-        var resource = WebInspector.resourceURLMap[sourceURL];
-        if (resource) {
-            if (resource.finished) {
-                // Resource is finished, bind the script right away.
-                resource.addScript(script);
-                this._sourceIDMap[sourceID] = resource;
-            } else {
-                // Resource is not finished, bind the script later.
-                if (!resource._scriptsPendingResourceLoad) {
-                    resource._scriptsPendingResourceLoad = [];
-                    resource.addEventListener("finished", this._resourceLoadingFinished, this);
-                }
-                resource._scriptsPendingResourceLoad.push(script);
-            }
-        }
-        this._addScriptToFilesMenu(script);
-    },
-
-    continueToLine: function(sourceID, line)
-    {
-        WebInspector.breakpointManager.setOneTimeBreakpoint(sourceID, line);
-        if (this.paused)
-            this._togglePause();
-    },
-
-    _resourceLoadingFinished: function(e)
-    {
-        var resource = e.target;
-        for (var i = 0; i < resource._scriptsPendingResourceLoad.length; ++i) {
-            // Bind script to resource.
-            var script = resource._scriptsPendingResourceLoad[i];
-            resource.addScript(script);
-            this._sourceIDMap[script.sourceID] = resource;
-
-            // Remove script from the files list.
-            script.filesSelectOption.parentElement.removeChild(script.filesSelectOption);
-            
-            // Move breakpoints to the resource's frame.
-            if (script._scriptView) {
-                var sourceFrame = script._scriptView.sourceFrame;
-                var resourceFrame = this._sourceFrameForScriptOrResource(resource);
-                for (var j = 0; j < sourceFrame.breakpoints; ++j)
-                    resourceFrame.addBreakpoint(sourceFrame.breakpoints[j]);
-            }
-        }
-        // Adding first script will add resource.
-        this._addScriptToFilesMenu(resource._scriptsPendingResourceLoad[0]);
-        delete resource._scriptsPendingResourceLoad;
-    },
-
-    _breakpointAdded: function(event)
-    {
-        var breakpoint = event.data;
-
-        if (!this.breakpointsActivated)
-            this._toggleBreakpointsClicked();
-
-        var sourceFrame;
-        if (breakpoint.url) {
-            var resource = WebInspector.resourceURLMap[breakpoint.url];
-            if (resource && resource.finished)
-                sourceFrame = this._sourceFrameForScriptOrResource(resource);
-        }
-
-        if (breakpoint.sourceID && !sourceFrame) {
-            var object = this._sourceIDMap[breakpoint.sourceID]
-            sourceFrame = this._sourceFrameForScriptOrResource(object);
-        }
-
-        if (sourceFrame)
-            sourceFrame.addBreakpoint(breakpoint);
-    },
-
-    _breakpointRemoved: function(event)
-    {
-        var breakpoint = event.data;
-
-        var sourceFrame;
-        if (breakpoint.url) {
-            var resource = WebInspector.resourceURLMap[breakpoint.url];
-            if (resource && resource.finished)
-                sourceFrame = this._sourceFrameForScriptOrResource(resource);
-        }
-
-        if (breakpoint.sourceID && !sourceFrame) {
-            var object = this._sourceIDMap[breakpoint.sourceID]
-            sourceFrame = this._sourceFrameForScriptOrResource(object);
-        }
-
-        if (sourceFrame)
-            sourceFrame.removeBreakpoint(breakpoint);
-    },
-
-    canEditScripts: function()
-    {
-        return Preferences.canEditScriptSource;
-    },
-
-    editScriptSource: function(sourceID, newContent, line, linesCountToShift, commitEditingCallback, cancelEditingCallback)
-    {
-        if (!this.canEditScripts())
+        if (this._toggleFormatSourceButton.toggled)
+            uiSourceCode.setFormatted(true);
+        if (uiSourceCode.project().isServiceProject())
             return;
-
-        // Need to clear breakpoints and re-create them later when editing source.
-        var breakpoints = WebInspector.breakpointManager.breakpointsForSourceID(sourceID);
-        for (var i = 0; i < breakpoints.length; ++i)
-            WebInspector.breakpointManager.removeBreakpoint(breakpoints[i]);
-
-        function mycallback(success, newBodyOrErrorMessage, callFrames)
-        {
-            if (success) {
-                commitEditingCallback(newBodyOrErrorMessage);
-                if (callFrames && callFrames.length)
-                    this.debuggerPaused(callFrames);
-            } else {
-                cancelEditingCallback();
-                WebInspector.log(newBodyOrErrorMessage, WebInspector.ConsoleMessage.MessageLevel.Warning);
-            }
-            for (var i = 0; i < breakpoints.length; ++i) {
-                var breakpoint = breakpoints[i];
-                var newLine = breakpoint.line;
-                if (success && breakpoint.line >= line)
-                    newLine += linesCountToShift;
-                WebInspector.breakpointManager.setBreakpoint(sourceID, breakpoint.url, newLine, breakpoint.enabled, breakpoint.condition);
-            }
-        };
-        var callbackId = WebInspector.Callback.wrap(mycallback.bind(this))
-        InspectorBackend.editScriptSource(callbackId, sourceID, newContent);
-    },
-
-    selectedCallFrameId: function()
-    {
-        var selectedCallFrame = this.sidebarPanes.callstack.selectedCallFrame;
-        if (!selectedCallFrame)
-            return null;
-        return selectedCallFrame.id;
-    },
-
-    evaluateInSelectedCallFrame: function(code, updateInterface, objectGroup, callback)
-    {
-        var selectedCallFrame = this.sidebarPanes.callstack.selectedCallFrame;
-        if (!this._paused || !selectedCallFrame)
-            return;
-
-        if (typeof updateInterface === "undefined")
-            updateInterface = true;
-
-        var self = this;
-        function updatingCallbackWrapper(result, exception)
-        {
-            callback(result, exception);
-            if (updateInterface)
-                self.sidebarPanes.scopechain.update(selectedCallFrame);
+        this._navigator.addUISourceCode(uiSourceCode);
+        this._editorContainer.addUISourceCode(uiSourceCode);
+        // Replace debugger script-based uiSourceCode with a network-based one.
+        var currentUISourceCode = this._currentUISourceCode;
+        if (currentUISourceCode && currentUISourceCode.project().isServiceProject() && currentUISourceCode !== uiSourceCode && currentUISourceCode.url === uiSourceCode.url) {
+            this._showFile(uiSourceCode);
+            this._editorContainer.removeUISourceCode(currentUISourceCode);
         }
-        this.doEvalInCallFrame(selectedCallFrame, code, objectGroup, updatingCallbackWrapper);
     },
 
-    doEvalInCallFrame: function(callFrame, code, objectGroup, callback)
+    _uiSourceCodeRemoved: function(event)
     {
-        function evalCallback(result)
-        {
-            if (result)
-                callback(result.value, result.isException);
+        var uiSourceCode = /** @type {WebInspector.UISourceCode} */ (event.data);
+        this._removeUISourceCodes([uiSourceCode]);
+    },
+
+    /**
+     * @param {Array.<WebInspector.UISourceCode>} uiSourceCodes
+     */
+    _removeUISourceCodes: function(uiSourceCodes)
+    {
+        for (var i = 0; i < uiSourceCodes.length; ++i) {
+            this._navigator.removeUISourceCode(uiSourceCodes[i]);
+            this._removeSourceFrame(uiSourceCodes[i]);
         }
-        InjectedScriptAccess.get(callFrame.injectedScriptId).evaluateInCallFrame(callFrame.id, code, objectGroup, evalCallback);
+        this._editorContainer.removeUISourceCodes(uiSourceCodes);
     },
 
-    debuggerPaused: function(callFrames)
+    _consoleCommandEvaluatedInSelectedCallFrame: function(event)
     {
-        WebInspector.breakpointManager.removeOneTimeBreakpoint();
+        this.sidebarPanes.scopechain.update(WebInspector.debuggerModel.selectedCallFrame());
+    },
+
+    _debuggerPaused: function()
+    {
+        var details = WebInspector.debuggerModel.debuggerPausedDetails();
+
         this._paused = true;
         this._waitingToPause = false;
         this._stepping = false;
 
         this._updateDebuggerButtons();
 
-        this.sidebarPanes.callstack.update(callFrames, this._sourceIDMap);
-        this.sidebarPanes.callstack.selectedCallFrame = callFrames[0];
+        WebInspector.inspectorView.setCurrentPanel(this);
+        this.sidebarPanes.callstack.update(details.callFrames);
 
-        WebInspector.currentPanel = this;
+        if (details.reason === WebInspector.DebuggerModel.BreakReason.DOM) {
+            WebInspector.domBreakpointsSidebarPane.highlightBreakpoint(details.auxData);
+            function didCreateBreakpointHitStatusMessage(element)
+            {
+                this.sidebarPanes.callstack.setStatus(element);
+            }
+            WebInspector.domBreakpointsSidebarPane.createBreakpointHitStatusMessage(details.auxData, didCreateBreakpointHitStatusMessage.bind(this));
+        } else if (details.reason === WebInspector.DebuggerModel.BreakReason.EventListener) {
+            var eventName = details.auxData.eventName;
+            this.sidebarPanes.eventListenerBreakpoints.highlightBreakpoint(details.auxData.eventName);
+            var eventNameForUI = WebInspector.EventListenerBreakpointsSidebarPane.eventNameForUI(eventName);
+            this.sidebarPanes.callstack.setStatus(WebInspector.UIString("Paused on a \"%s\" Event Listener.", eventNameForUI));
+        } else if (details.reason === WebInspector.DebuggerModel.BreakReason.XHR) {
+            this.sidebarPanes.xhrBreakpoints.highlightBreakpoint(details.auxData["breakpointURL"]);
+            this.sidebarPanes.callstack.setStatus(WebInspector.UIString("Paused on a XMLHttpRequest."));
+        } else if (details.reason === WebInspector.DebuggerModel.BreakReason.Exception)
+            this.sidebarPanes.callstack.setStatus(WebInspector.UIString("Paused on exception: '%s'.", details.auxData.description));
+        else if (details.reason === WebInspector.DebuggerModel.BreakReason.Assert)
+            this.sidebarPanes.callstack.setStatus(WebInspector.UIString("Paused on assertion."));
+        else if (details.reason === WebInspector.DebuggerModel.BreakReason.CSPViolation)
+            this.sidebarPanes.callstack.setStatus(WebInspector.UIString("Paused on a script blocked due to Content Security Policy directive: \"%s\".", details.auxData["directiveText"]));
+        else {
+            function didGetUILocation(uiLocation)
+            {
+                var breakpoint = WebInspector.breakpointManager.findBreakpoint(uiLocation.uiSourceCode, uiLocation.lineNumber);
+                if (!breakpoint)
+                    return;
+                this.sidebarPanes.jsBreakpoints.highlightBreakpoint(breakpoint);
+                this.sidebarPanes.callstack.setStatus(WebInspector.UIString("Paused on a JavaScript breakpoint."));
+            }
+            if (details.callFrames.length) 
+                details.callFrames[0].createLiveLocation(didGetUILocation.bind(this));
+            else
+                console.warn("ScriptsPanel paused, but callFrames.length is zero."); // TODO remove this once we understand this case better
+        }
+
+        this._showDebuggerSidebar();
+        this._toggleDebuggerSidebarButton.setEnabled(false);
         window.focus();
+        InspectorFrontendHost.bringToFront();
     },
 
-    debuggerResumed: function()
+    _debuggerResumed: function()
     {
         this._paused = false;
         this._waitingToPause = false;
         this._stepping = false;
 
         this._clearInterface();
+        this._toggleDebuggerSidebarButton.setEnabled(true);
     },
 
-    attachDebuggerWhenShown: function()
+    _debuggerWasEnabled: function()
     {
-        if (this.element.parentElement) {
-            InspectorBackend.enableDebugger(false);
-        } else {
-            this._attachDebuggerWhenShown = true;
-        }
+        this._updateDebuggerButtons();
     },
 
-    debuggerWasEnabled: function()
+    _debuggerWasDisabled: function()
     {
-        if (this._debuggerEnabled)
-            return;
-
-        this._debuggerEnabled = true;
-        this.reset(true);
+        this._debuggerReset();
     },
 
-    debuggerWasDisabled: function()
+    _debuggerReset: function()
     {
-        if (!this._debuggerEnabled)
-            return;
-
-        this._debuggerEnabled = false;
-        this.reset(true);
+        this._debuggerResumed();
+        this.sidebarPanes.watchExpressions.reset();
     },
 
-    reset: function(preserveItems)
+    _projectWillReset: function(event)
     {
-        this.visibleView = null;
-
-        delete this.currentQuery;
-        this.searchCanceled();
-
-        if (!this._debuggerEnabled) {
-            this._paused = false;
-            this._waitingToPause = false;
-            this._stepping = false;
-        }
-
-        this._clearInterface();
-
-        this._backForwardList = [];
-        this._currentBackForwardIndex = -1;
-        this._updateBackAndForwardButtons();
-
-        this._resourceForURLInFilesSelect = {};
-        this.filesSelectElement.removeChildren();
-        this.functionsSelectElement.removeChildren();
-        this.viewsContainerElement.removeChildren();
-
-        if (this._sourceIDMap) {
-            for (var sourceID in this._sourceIDMap) {
-                var object = this._sourceIDMap[sourceID];
-                if (object instanceof WebInspector.Resource)
-                    object.removeAllScripts();
-            }
-        }
-
-        this._sourceIDMap = {};
-
-        this.sidebarPanes.watchExpressions.refreshExpressions();
-        if (!preserveItems) {
-            this.sidebarPanes.breakpoints.reset();
-            this.sidebarPanes.workers.reset();
-        }
+        var project = event.data;
+        var uiSourceCodes = project.uiSourceCodes();
+        this._removeUISourceCodes(uiSourceCodes);
+        if (project.type() === WebInspector.projectTypes.Network)
+            this._editorContainer.reset();
     },
 
     get visibleView()
     {
-        return this._visibleView;
+        return this._editorContainer.visibleView;
     },
 
-    set visibleView(x)
+    _updateScriptViewStatusBarItems: function()
     {
-        if (this._visibleView === x)
+        this._scriptViewStatusBarItemsContainer.removeChildren();
+
+        var sourceFrame = this.visibleView;
+        if (sourceFrame) {
+            var statusBarItems = sourceFrame.statusBarItems() || [];
+            for (var i = 0; i < statusBarItems.length; ++i)
+                this._scriptViewStatusBarItemsContainer.appendChild(statusBarItems[i]);
+        }
+    },
+
+    canShowAnchorLocation: function(anchor)
+    {
+        if (WebInspector.debuggerModel.debuggerEnabled() && anchor.uiSourceCode)
+            return true;
+        var uri = WebInspector.fileMapping.uriForURL(anchor.href);
+        var uiSourceCode = this._workspace.uiSourceCodeForURI(uri);
+        if (uiSourceCode) {
+            anchor.uiSourceCode = uiSourceCode;
+            return true;
+        }
+        return false;
+    },
+
+    showAnchorLocation: function(anchor)
+    {
+        this._showSourceLine(anchor.uiSourceCode, anchor.lineNumber);
+    },
+
+    /**
+     * @param {WebInspector.UISourceCode} uiSourceCode
+     * @param {number} lineNumber
+     */
+    showUISourceCode: function(uiSourceCode, lineNumber)
+    {
+        this._showSourceLine(uiSourceCode, lineNumber);
+    },
+
+    /**
+     * @param {WebInspector.UISourceCode} uiSourceCode
+     * @param {number=} lineNumber
+     */
+    _showSourceLine: function(uiSourceCode, lineNumber)
+    {
+        var sourceFrame = this._showFile(uiSourceCode);
+        if (typeof lineNumber === "number")
+            sourceFrame.highlightLine(lineNumber);
+        sourceFrame.focus();
+
+        WebInspector.notifications.dispatchEventToListeners(WebInspector.UserMetrics.UserAction, {
+            action: WebInspector.UserMetrics.UserActionNames.OpenSourceLink,
+            url: uiSourceCode.originURL(),
+            lineNumber: lineNumber
+        });
+    },
+
+    /**
+     * @param {WebInspector.UISourceCode} uiSourceCode
+     * @return {WebInspector.SourceFrame}
+     */
+    _showFile: function(uiSourceCode)
+    {
+        var sourceFrame = this._getOrCreateSourceFrame(uiSourceCode);
+        if (this._currentUISourceCode === uiSourceCode)
+            return sourceFrame;
+        this._currentUISourceCode = uiSourceCode;
+        if (!uiSourceCode.project().isServiceProject())
+            this._navigator.revealUISourceCode(uiSourceCode);
+        this._editorContainer.showFile(uiSourceCode);
+        this._updateScriptViewStatusBarItems();
+
+        return sourceFrame;
+    },
+
+    /**
+     * @param {WebInspector.UISourceCode} uiSourceCode
+     * @return {WebInspector.SourceFrame}
+     */
+    _createSourceFrame: function(uiSourceCode)
+    {
+        var sourceFrame;
+        switch (uiSourceCode.contentType()) {
+        case WebInspector.resourceTypes.Script:
+            if (uiSourceCode.project().type() === WebInspector.projectTypes.Snippets)
+                sourceFrame = new WebInspector.SnippetJavaScriptSourceFrame(this, uiSourceCode);
+            else
+                sourceFrame = new WebInspector.JavaScriptSourceFrame(this, uiSourceCode);
+            break;
+        case WebInspector.resourceTypes.Document:
+            sourceFrame = new WebInspector.JavaScriptSourceFrame(this, uiSourceCode);
+            break;
+        case WebInspector.resourceTypes.Stylesheet:
+        default:
+            sourceFrame = new WebInspector.UISourceCodeFrame(uiSourceCode);
+        break;
+        }
+        this._sourceFramesByUISourceCode.put(uiSourceCode, sourceFrame);
+        return sourceFrame;
+    },
+
+    /**
+     * @param {WebInspector.UISourceCode} uiSourceCode
+     * @return {WebInspector.SourceFrame}
+     */
+    _getOrCreateSourceFrame: function(uiSourceCode)
+    {
+        return this._sourceFramesByUISourceCode.get(uiSourceCode) || this._createSourceFrame(uiSourceCode);
+    },
+
+    /**
+     * @param {WebInspector.UISourceCode} uiSourceCode
+     * @return {WebInspector.SourceFrame}
+     */
+    viewForFile: function(uiSourceCode)
+    {
+        return this._getOrCreateSourceFrame(uiSourceCode);
+    },
+
+    /**
+     * @param {WebInspector.UISourceCode} uiSourceCode
+     */
+    _removeSourceFrame: function(uiSourceCode)
+    {
+        var sourceFrame = this._sourceFramesByUISourceCode.get(uiSourceCode);
+        if (!sourceFrame)
             return;
-
-        if (this._visibleView)
-            this._visibleView.hide();
-
-        this._visibleView = x;
-
-        if (x)
-            x.show(this.viewsContainerElement);
-    },
-
-    viewRecreated: function(oldView, newView)
-    {
-        if (this._visibleView === oldView)
-            this._visibleView = newView;
-    },
-
-    canShowSourceLine: function(url, line)
-    {
-        if (!this._debuggerEnabled)
-            return false;
-        return !!this._scriptOrResourceForURLAndLine(url, line);
-    },
-
-    showSourceLine: function(url, line)
-    {
-        var scriptOrResource = this._scriptOrResourceForURLAndLine(url, line);
-        this._showScriptOrResource(scriptOrResource, {line: line, shouldHighlightLine: true});
-    },
-
-    _scriptOrResourceForURLAndLine: function(url, line) 
-    {
-        var scriptWithMatchingUrl = null;
-        for (var sourceID in this._sourceIDMap) {
-            var scriptOrResource = this._sourceIDMap[sourceID];
-            if (scriptOrResource instanceof WebInspector.Script) {
-                if (scriptOrResource.sourceURL !== url)
-                    continue;
-                scriptWithMatchingUrl = scriptOrResource;
-                if (scriptWithMatchingUrl.startingLine <= line && scriptWithMatchingUrl.startingLine + scriptWithMatchingUrl.linesCount > line)
-                    return scriptWithMatchingUrl;
-            } else {
-                var resource = scriptOrResource;
-                if (resource.url === url)
-                    return resource;
-            }
-        }
-        return scriptWithMatchingUrl;
-    },
-
-    showView: function(view)
-    {
-        if (!view)
-            return;
-        this._showScriptOrResource(view.resource || view.script);
-    },
-
-    handleShortcut: function(event)
-    {
-        var shortcut = WebInspector.KeyboardShortcut.makeKeyFromEvent(event);
-        var handler = this._shortcuts[shortcut];
-        if (handler) {
-            handler(event);
-            event.handled = true;
-        } else
-            this.sidebarPanes.callstack.handleShortcut(event);
-    },
-
-    scriptViewForScript: function(script)
-    {
-        if (!script)
-            return null;
-        if (!script._scriptView)
-            script._scriptView = new WebInspector.ScriptView(script);
-        return script._scriptView;
-    },
-
-    sourceFrameForScript: function(script)
-    {
-        var view = this.scriptViewForScript(script);
-        if (!view)
-            return null;
-
-        // Setting up the source frame requires that we be attached.
-        if (!this.element.parentNode)
-            this.attach();
-
-        view.setupSourceFrameIfNeeded();
-        return view.sourceFrame;
-    },
-
-    _sourceFrameForScriptOrResource: function(scriptOrResource)
-    {
-        if (scriptOrResource instanceof WebInspector.Resource)
-            return WebInspector.panels.resources.sourceFrameForResource(scriptOrResource);
-        if (scriptOrResource instanceof WebInspector.Script)
-            return this.sourceFrameForScript(scriptOrResource);
-    },
-
-    _showScriptOrResource: function(scriptOrResource, options)
-    {
-        // options = {line:, shouldHighlightLine:, fromBackForwardAction:, initialLoad:}
-        if (!options) 
-            options = {};
-
-        if (!scriptOrResource)
-            return;
-
-        var view;
-        if (scriptOrResource instanceof WebInspector.Resource) {
-            if (!WebInspector.panels.resources)
-                return null;
-            view = WebInspector.panels.resources.resourceViewForResource(scriptOrResource);
-            view.headersVisible = false;
-            var sourceFrame = this._sourceFrameForScriptOrResource(scriptOrResource);
-            var breakpoints = WebInspector.breakpointManager.breakpointsForURL(scriptOrResource.url);
-            for (var i = 0; i < breakpoints.length; ++i)
-                sourceFrame.addBreakpoint(breakpoints[i]);
-        } else if (scriptOrResource instanceof WebInspector.Script)
-            view = this.scriptViewForScript(scriptOrResource);
-
-        if (!view)
-            return;
-
-        var url = scriptOrResource.url || scriptOrResource.sourceURL;
-        if (url && !options.initialLoad)
-            WebInspector.applicationSettings.lastViewedScriptFile = url;
-
-        if (!options.fromBackForwardAction) {
-            var oldIndex = this._currentBackForwardIndex;
-            if (oldIndex >= 0)
-                this._backForwardList.splice(oldIndex + 1, this._backForwardList.length - oldIndex);
-
-            // Check for a previous entry of the same object in _backForwardList.
-            // If one is found, remove it and update _currentBackForwardIndex to match.
-            var previousEntryIndex = this._backForwardList.indexOf(scriptOrResource);
-            if (previousEntryIndex !== -1) {
-                this._backForwardList.splice(previousEntryIndex, 1);
-                --this._currentBackForwardIndex;
-            }
-
-            this._backForwardList.push(scriptOrResource);
-            ++this._currentBackForwardIndex;
-
-            this._updateBackAndForwardButtons();
-        }
-
-        this.visibleView = view;
-
-        if (options.line) {
-            if (view.revealLine)
-                view.revealLine(options.line);
-            if (view.highlightLine && options.shouldHighlightLine)
-                view.highlightLine(options.line);
-        }
-
-        var option;
-        if (scriptOrResource instanceof WebInspector.Script) {
-            option = scriptOrResource.filesSelectOption;
-
-            // hasn't been added yet - happens for stepping in evals,
-            // so use the force option to force the script into the menu.
-            if (!option) {
-                this._addScriptToFilesMenu(scriptOrResource, true);
-                option = scriptOrResource.filesSelectOption;
-            }
-
-            console.assert(option);
-        } else
-            option = scriptOrResource.filesSelectOption;
-
-        if (option)
-            this.filesSelectElement.selectedIndex = option.index;
-    },
-
-    _addScriptToFilesMenu: function(script, force)
-    {
-        if (!script.sourceURL && !force)
-            return;
-
-        if (script.resource) {
-            if (this._resourceForURLInFilesSelect[script.resource.url])
-                return;
-            this._resourceForURLInFilesSelect[script.resource.url] = script.resource;
-        }
- 
-        var displayName = script.sourceURL ? WebInspector.displayNameForURL(script.sourceURL) : WebInspector.UIString("(program)");
-
-        var select = this.filesSelectElement;
-        var option = document.createElement("option");
-        option.representedObject = script.resource || script;
-        option.url = displayName;
-        option.startingLine = script.startingLine;
-        option.text = script.resource || script.startingLine === 1 ? displayName : String.sprintf("%s:%d", displayName, script.startingLine);
-
-        function optionCompare(a, b)
-        {
-            if (a.url < b.url)
-                return -1;
-            else if (a.url > b.url)
-                return 1;
-
-            if (typeof a.startingLine !== "number")
-                return -1;
-            if (typeof b.startingLine !== "number")
-                return -1;
-            return a.startingLine - b.startingLine;
-        }
-
-        var insertionIndex = insertionIndexForObjectInListSortedByFunction(option, select.childNodes, optionCompare);
-        if (insertionIndex < 0)
-            select.appendChild(option);
-        else
-            select.insertBefore(option, select.childNodes.item(insertionIndex));
-
-        if (script.resource)
-            script.resource.filesSelectOption = option;
-        else
-            script.filesSelectOption = option;
-
-        // Call _showScriptOrResource if the option we just appended ended up being selected.
-        // This will happen for the first item added to the menu.
-        if (select.options[select.selectedIndex] === option)
-            this._showScriptOrResource(option.representedObject, {initialLoad: true});
-        else {
-            // if not first item, check to see if this was the last viewed
-            var url = option.representedObject.url || option.representedObject.sourceURL;
-            var lastURL = WebInspector.applicationSettings.lastViewedScriptFile;
-            if (url && url === lastURL)
-                this._showScriptOrResource(option.representedObject, {initialLoad: true});
-        }
-
-        if (script.worldType === WebInspector.Script.WorldType.EXTENSIONS_WORLD)
-            script.filesSelectOption.addStyleClass("extension-script");
+        this._sourceFramesByUISourceCode.remove(uiSourceCode);
+        sourceFrame.detach();
     },
 
     _clearCurrentExecutionLine: function()
     {
         if (this._executionSourceFrame)
-            this._executionSourceFrame.executionLine = 0;
+            this._executionSourceFrame.clearExecutionLine();
         delete this._executionSourceFrame;
     },
 
-    _callFrameSelected: function()
+    _executionLineChanged: function(event)
     {
-        this._clearCurrentExecutionLine();
+        var uiLocation = event.data;
 
-        var callStackPane = this.sidebarPanes.callstack;
-        var currentFrame = callStackPane.selectedCallFrame;
-        if (!currentFrame)
+        this._clearCurrentExecutionLine();
+        if (!uiLocation)
+            return;
+        var sourceFrame = this._getOrCreateSourceFrame(uiLocation.uiSourceCode);
+        sourceFrame.setExecutionLine(uiLocation.lineNumber);
+        this._executionSourceFrame = sourceFrame;
+    },
+
+    _revealExecutionLine: function(uiLocation)
+    {
+        var uiSourceCode = uiLocation.uiSourceCode;
+        // Some scripts (anonymous and snippets evaluations) are not added to files select by default.
+        if (this._currentUISourceCode && this._currentUISourceCode.scriptFile() && this._currentUISourceCode.scriptFile().isDivergingFromVM())
+            return;
+        if (this._toggleFormatSourceButton.toggled && !uiSourceCode.formatted())
+            uiSourceCode.setFormatted(true);
+        var sourceFrame = this._showFile(uiSourceCode);
+        sourceFrame.revealLine(uiLocation.lineNumber);
+        sourceFrame.focus();
+    },
+
+    _callFrameSelected: function(event)
+    {
+        var callFrame = event.data;
+
+        if (!callFrame)
             return;
 
-        this.sidebarPanes.scopechain.update(currentFrame);
+        this.sidebarPanes.scopechain.update(callFrame);
         this.sidebarPanes.watchExpressions.refreshExpressions();
-
-        var scriptOrResource = this._sourceIDMap[currentFrame.sourceID];
-        this._showScriptOrResource(scriptOrResource, {line: currentFrame.line});
-
-        this._executionSourceFrame = this._sourceFrameForScriptOrResource(scriptOrResource);
-        if (this._executionSourceFrame)
-            this._executionSourceFrame.executionLine = currentFrame.line;
+        this.sidebarPanes.callstack.setSelectedCallFrame(callFrame);
+        callFrame.createLiveLocation(this._revealExecutionLine.bind(this));
     },
 
-    _changeVisibleFile: function(event)
+    _editorClosed: function(event)
     {
-        var select = this.filesSelectElement;
-        this._showScriptOrResource(select.options[select.selectedIndex].representedObject);
+        this._navigatorController.hideNavigatorOverlay();
+        var uiSourceCode = /** @type {WebInspector.UISourceCode} */ (event.data);
+
+        if (this._currentUISourceCode === uiSourceCode)
+            delete this._currentUISourceCode;
+
+        // ScriptsNavigator does not need to update on EditorClosed.
+        this._updateScriptViewStatusBarItems();
+        WebInspector.searchController.resetSearch();
     },
 
-    _startSidebarResizeDrag: function(event)
+    _editorSelected: function(event)
     {
-        WebInspector.elementDragStart(this.sidebarElement, this._sidebarResizeDrag.bind(this), this._endSidebarResizeDrag.bind(this), event, "col-resize");
-
-        if (event.target === this.sidebarResizeWidgetElement)
-            this._dragOffset = (event.target.offsetWidth - (event.pageX - event.target.totalOffsetLeft));
-        else
-            this._dragOffset = 0;
+        var uiSourceCode = /** @type {WebInspector.UISourceCode} */ (event.data);
+        var sourceFrame = this._showFile(uiSourceCode);
+        this._navigatorController.hideNavigatorOverlay();
+        sourceFrame.focus();
+        WebInspector.searchController.resetSearch();
     },
 
-    _endSidebarResizeDrag: function(event)
+    _scriptSelected: function(event)
     {
-        WebInspector.elementDragEnd(event);
-        delete this._dragOffset;
-        this.saveSidebarWidth();
+        var uiSourceCode = /** @type {WebInspector.UISourceCode} */ (event.data.uiSourceCode);
+        var sourceFrame = this._showFile(uiSourceCode);
+        this._navigatorController.hideNavigatorOverlay();
+        if (sourceFrame && event.data.focusSource)
+            sourceFrame.focus();
     },
 
-    _sidebarResizeDrag: function(event)
+    _pauseOnExceptionStateChanged: function()
     {
-        var x = event.pageX + this._dragOffset;
-        var newWidth = Number.constrain(window.innerWidth - x, Preferences.minScriptsSidebarWidth, window.innerWidth * 0.66);
-        this.setSidebarWidth(newWidth);
-        event.preventDefault();
-    },
-
-    setSidebarWidth: function(newWidth)
-    {
-        this.sidebarElement.style.width = newWidth + "px";
-        this.sidebarButtonsElement.style.width = newWidth + "px";
-        this.viewsContainerElement.style.right = newWidth + "px";
-        this.sidebarResizeWidgetElement.style.right = newWidth + "px";
-        this.sidebarResizeElement.style.right = (newWidth - 3) + "px";
-
-        this.resize();
-    },
-    
-    updatePauseOnExceptionsState: function(pauseOnExceptionsState)
-    {
-        if (pauseOnExceptionsState == WebInspector.ScriptsPanel.PauseOnExceptionsState.DontPauseOnExceptions)
+        var pauseOnExceptionsState = WebInspector.settings.pauseOnExceptionStateString.get();
+        switch (pauseOnExceptionsState) {
+        case WebInspector.DebuggerModel.PauseOnExceptionsState.DontPauseOnExceptions:
             this._pauseOnExceptionButton.title = WebInspector.UIString("Don't pause on exceptions.\nClick to Pause on all exceptions.");
-        else if (pauseOnExceptionsState == WebInspector.ScriptsPanel.PauseOnExceptionsState.PauseOnAllExceptions)
+            break;
+        case WebInspector.DebuggerModel.PauseOnExceptionsState.PauseOnAllExceptions:
             this._pauseOnExceptionButton.title = WebInspector.UIString("Pause on all exceptions.\nClick to Pause on uncaught exceptions.");
-        else if (pauseOnExceptionsState == WebInspector.ScriptsPanel.PauseOnExceptionsState.PauseOnUncaughtExceptions)
+            break;
+        case WebInspector.DebuggerModel.PauseOnExceptionsState.PauseOnUncaughtExceptions:
             this._pauseOnExceptionButton.title = WebInspector.UIString("Pause on uncaught exceptions.\nClick to Not pause on exceptions.");
-
+            break;
+        }
         this._pauseOnExceptionButton.state = pauseOnExceptionsState;
     },
 
     _updateDebuggerButtons: function()
     {
-        if (this._debuggerEnabled) {
+        if (WebInspector.debuggerModel.debuggerEnabled()) {
             this.enableToggleButton.title = WebInspector.UIString("Debugging enabled. Click to disable.");
             this.enableToggleButton.toggled = true;
             this._pauseOnExceptionButton.visible = true;
-            this.panelEnablerView.visible = false;
+            this.panelEnablerView.detach();
         } else {
             this.enableToggleButton.title = WebInspector.UIString("Debugging disabled. Click to enable.");
             this.enableToggleButton.toggled = false;
             this._pauseOnExceptionButton.visible = false;
-            this.panelEnablerView.visible = true;
+            this.panelEnablerView.show(this.element);
         }
 
         if (this._paused) {
+            this._updateButtonTitle(this.pauseButton, WebInspector.UIString("Resume script execution (%s)."))
             this.pauseButton.addStyleClass("paused");
 
             this.pauseButton.disabled = false;
@@ -849,6 +615,7 @@ WebInspector.ScriptsPanel.prototype = {
 
             this.debuggerStatusElement.textContent = WebInspector.UIString("Paused");
         } else {
+            this._updateButtonTitle(this.pauseButton, WebInspector.UIString("Pause script execution (%s)."))
             this.pauseButton.removeStyleClass("paused");
 
             this.pauseButton.disabled = this._waitingToPause;
@@ -865,47 +632,21 @@ WebInspector.ScriptsPanel.prototype = {
         }
     },
 
-    _updateBackAndForwardButtons: function()
-    {
-        this.backButton.disabled = this._currentBackForwardIndex <= 0;
-        this.forwardButton.disabled = this._currentBackForwardIndex >= (this._backForwardList.length - 1);
-    },
-
     _clearInterface: function()
     {
         this.sidebarPanes.callstack.update(null);
         this.sidebarPanes.scopechain.update(null);
+        this.sidebarPanes.jsBreakpoints.clearBreakpointHighlight();
+        WebInspector.domBreakpointsSidebarPane.clearBreakpointHighlight();
+        this.sidebarPanes.eventListenerBreakpoints.clearBreakpointHighlight();
+        this.sidebarPanes.xhrBreakpoints.clearBreakpointHighlight();
 
         this._clearCurrentExecutionLine();
         this._updateDebuggerButtons();
     },
 
-    _goBack: function()
-    {
-        if (this._currentBackForwardIndex <= 0) {
-            console.error("Can't go back from index " + this._currentBackForwardIndex);
-            return;
-        }
-
-        this._showScriptOrResource(this._backForwardList[--this._currentBackForwardIndex], {fromBackForwardAction: true});
-        this._updateBackAndForwardButtons();
-    },
-
-    _goForward: function()
-    {
-        if (this._currentBackForwardIndex >= this._backForwardList.length - 1) {
-            console.error("Can't go forward from index " + this._currentBackForwardIndex);
-            return;
-        }
-
-        this._showScriptOrResource(this._backForwardList[++this._currentBackForwardIndex], {fromBackForwardAction: true});
-        this._updateBackAndForwardButtons();
-    },
-
     _enableDebugging: function()
     {
-        if (this._debuggerEnabled)
-            return;
         this._toggleDebugging(this.panelEnablerView.alwaysEnabled);
     },
 
@@ -915,15 +656,23 @@ WebInspector.ScriptsPanel.prototype = {
         this._waitingToPause = false;
         this._stepping = false;
 
-        if (this._debuggerEnabled)
-            InspectorBackend.disableDebugger(true);
-        else
-            InspectorBackend.enableDebugger(!!optionalAlways);
+        if (WebInspector.debuggerModel.debuggerEnabled()) {
+            WebInspector.settings.debuggerEnabled.set(false);
+            WebInspector.debuggerModel.disableDebugger();
+        } else {
+            WebInspector.settings.debuggerEnabled.set(!!optionalAlways);
+            WebInspector.debuggerModel.enableDebugger();
+        }
     },
 
     _togglePauseOnExceptions: function()
     {
-        InspectorBackend.setPauseOnExceptionsState((this._pauseOnExceptionButton.state + 1) % this._pauseOnExceptionButton.states);
+        var nextStateMap = {};
+        var stateEnum = WebInspector.DebuggerModel.PauseOnExceptionsState;
+        nextStateMap[stateEnum.DontPauseOnExceptions] = stateEnum.PauseOnAllExceptions;
+        nextStateMap[stateEnum.PauseOnAllExceptions] = stateEnum.PauseOnUncaughtExceptions;
+        nextStateMap[stateEnum.PauseOnUncaughtExceptions] = stateEnum.DontPauseOnExceptions;
+        WebInspector.settings.pauseOnExceptionStateString.set(nextStateMap[this._pauseOnExceptionButton.state]);
     },
 
     _togglePause: function()
@@ -931,11 +680,11 @@ WebInspector.ScriptsPanel.prototype = {
         if (this._paused) {
             this._paused = false;
             this._waitingToPause = false;
-            InspectorBackend.resume();
+            DebuggerAgent.resume();
         } else {
             this._stepping = false;
             this._waitingToPause = true;
-            InspectorBackend.pause();
+            DebuggerAgent.pause();
         }
 
         this._clearInterface();
@@ -943,97 +692,547 @@ WebInspector.ScriptsPanel.prototype = {
 
     _stepOverClicked: function()
     {
+        if (!this._paused)
+            return;
+
         this._paused = false;
         this._stepping = true;
 
         this._clearInterface();
 
-        InspectorBackend.stepOverStatement();
+        DebuggerAgent.stepOver();
     },
 
     _stepIntoClicked: function()
     {
+        if (!this._paused)
+            return;
+
         this._paused = false;
         this._stepping = true;
 
         this._clearInterface();
 
-        InspectorBackend.stepIntoStatement();
+        DebuggerAgent.stepInto();
     },
 
     _stepOutClicked: function()
     {
+        if (!this._paused)
+            return;
+
         this._paused = false;
         this._stepping = true;
 
         this._clearInterface();
 
-        InspectorBackend.stepOutOfFunction();
+        DebuggerAgent.stepOut();
     },
 
-    _toggleBreakpointsClicked: function()
+    _toggleBreakpointsClicked: function(event)
     {
-        this.toggleBreakpointsButton.toggled = !this.toggleBreakpointsButton.toggled;
-        if (this.toggleBreakpointsButton.toggled) {
-            InspectorBackend.activateBreakpoints();
-            this.toggleBreakpointsButton.title = WebInspector.UIString("Deactivate all breakpoints.");
-            document.getElementById("main-panels").removeStyleClass("breakpoints-deactivated");
+        WebInspector.debuggerModel.setBreakpointsActive(!WebInspector.debuggerModel.breakpointsActive());
+    },
+
+    _breakpointsActiveStateChanged: function(event)
+    {
+        var active = event.data;
+        this._toggleBreakpointsButton.toggled = active;
+        if (active) {
+            this._toggleBreakpointsButton.title = WebInspector.UIString("Deactivate breakpoints.");
+            WebInspector.inspectorView.element.removeStyleClass("breakpoints-deactivated");
+            this.sidebarPanes.jsBreakpoints.listElement.removeStyleClass("breakpoints-list-deactivated");
         } else {
-            InspectorBackend.deactivateBreakpoints();
-            this.toggleBreakpointsButton.title = WebInspector.UIString("Activate all breakpoints.");
-            document.getElementById("main-panels").addStyleClass("breakpoints-deactivated");
+            this._toggleBreakpointsButton.title = WebInspector.UIString("Activate breakpoints.");
+            WebInspector.inspectorView.element.addStyleClass("breakpoints-deactivated");
+            this.sidebarPanes.jsBreakpoints.listElement.addStyleClass("breakpoints-list-deactivated");
         }
     },
 
-    elementsToRestoreScrollPositionsFor: function()
+    _evaluateSelectionInConsole: function()
     {
-        return [ this.sidebarElement ];
+        var selection = window.getSelection();
+        if (selection.type === "Range" && !selection.isCollapsed)
+            WebInspector.evaluateInConsole(selection.toString());
     },
 
-    _registerShortcuts: function()
+    _createDebugToolbar: function()
     {
-        var section = WebInspector.shortcutsHelp.section(WebInspector.UIString("Scripts Panel"));
-        var handler, shortcut1, shortcut2;
+        var debugToolbar = document.createElement("div");
+        debugToolbar.className = "status-bar";
+        debugToolbar.id = "scripts-debug-toolbar";
+
+        var title, handler;
         var platformSpecificModifier = WebInspector.KeyboardShortcut.Modifiers.CtrlOrMeta;
 
-        this._shortcuts = {};
-
         // Continue.
-        handler = this.pauseButton.click.bind(this.pauseButton);
-        shortcut1 = WebInspector.KeyboardShortcut.makeDescriptor(WebInspector.KeyboardShortcut.Keys.F8);
-        this._shortcuts[shortcut1.key] = handler;
-        shortcut2 = WebInspector.KeyboardShortcut.makeDescriptor(WebInspector.KeyboardShortcut.Keys.Slash, platformSpecificModifier);
-        this._shortcuts[shortcut2.key] = handler;
-        section.addAlternateKeys([ shortcut1.name, shortcut2.name ], WebInspector.UIString("Continue"));
+        handler = this._togglePause.bind(this);
+        this.pauseButton = this._createButtonAndRegisterShortcuts("scripts-pause", "", handler, WebInspector.ScriptsPanelDescriptor.ShortcutKeys.PauseContinue);
+        debugToolbar.appendChild(this.pauseButton);
 
         // Step over.
-        handler = this.stepOverButton.click.bind(this.stepOverButton);
-        shortcut1 = WebInspector.KeyboardShortcut.makeDescriptor(WebInspector.KeyboardShortcut.Keys.F10);
-        this._shortcuts[shortcut1.key] = handler;
-        shortcut2 = WebInspector.KeyboardShortcut.makeDescriptor(WebInspector.KeyboardShortcut.Keys.SingleQuote, platformSpecificModifier);
-        this._shortcuts[shortcut2.key] = handler;
-        section.addAlternateKeys([ shortcut1.name, shortcut2.name ], WebInspector.UIString("Step over"));
+        title = WebInspector.UIString("Step over next function call (%s).");
+        handler = this._stepOverClicked.bind(this);
+        this.stepOverButton = this._createButtonAndRegisterShortcuts("scripts-step-over", title, handler, WebInspector.ScriptsPanelDescriptor.ShortcutKeys.StepOver);
+        debugToolbar.appendChild(this.stepOverButton);
 
         // Step into.
-        handler = this.stepIntoButton.click.bind(this.stepIntoButton);
-        shortcut1 = WebInspector.KeyboardShortcut.makeDescriptor(WebInspector.KeyboardShortcut.Keys.F11);
-        this._shortcuts[shortcut1.key] = handler;
-        shortcut2 = WebInspector.KeyboardShortcut.makeDescriptor(WebInspector.KeyboardShortcut.Keys.Semicolon, platformSpecificModifier);
-        this._shortcuts[shortcut2.key] = handler;
-        section.addAlternateKeys([ shortcut1.name, shortcut2.name ], WebInspector.UIString("Step into"));
+        title = WebInspector.UIString("Step into next function call (%s).");
+        handler = this._stepIntoClicked.bind(this);
+        this.stepIntoButton = this._createButtonAndRegisterShortcuts("scripts-step-into", title, handler, WebInspector.ScriptsPanelDescriptor.ShortcutKeys.StepInto);
+        debugToolbar.appendChild(this.stepIntoButton);
 
         // Step out.
-        handler = this.stepOutButton.click.bind(this.stepOutButton);
-        shortcut1 = WebInspector.KeyboardShortcut.makeDescriptor(WebInspector.KeyboardShortcut.Keys.F11, WebInspector.KeyboardShortcut.Modifiers.Shift);
-        this._shortcuts[shortcut1.key] = handler;
-        shortcut2 = WebInspector.KeyboardShortcut.makeDescriptor(WebInspector.KeyboardShortcut.Keys.Semicolon, WebInspector.KeyboardShortcut.Modifiers.Shift, platformSpecificModifier);
-        this._shortcuts[shortcut2.key] = handler;
-        section.addAlternateKeys([ shortcut1.name, shortcut2.name ], WebInspector.UIString("Step out"));
+        title = WebInspector.UIString("Step out of current function (%s).");
+        handler = this._stepOutClicked.bind(this);
+        this.stepOutButton = this._createButtonAndRegisterShortcuts("scripts-step-out", title, handler, WebInspector.ScriptsPanelDescriptor.ShortcutKeys.StepOut);
+        debugToolbar.appendChild(this.stepOutButton);
 
-        this.sidebarPanes.callstack.registerShortcuts(section);
-    }
+        this._toggleBreakpointsButton = new WebInspector.StatusBarButton(WebInspector.UIString("Deactivate breakpoints."), "toggle-breakpoints");
+        this._toggleBreakpointsButton.toggled = true;
+        this._toggleBreakpointsButton.addEventListener("click", this._toggleBreakpointsClicked, this);
+        debugToolbar.appendChild(this._toggleBreakpointsButton.element);
+
+        this.debuggerStatusElement = document.createElement("div");
+        this.debuggerStatusElement.id = "scripts-debugger-status";
+        debugToolbar.appendChild(this.debuggerStatusElement);
+
+        return debugToolbar;
+    },
+
+    _updateButtonTitle: function(button, buttonTitle)
+    {
+        button.buttonTitle = buttonTitle;
+        var hasShortcuts = button.shortcuts && button.shortcuts.length;
+        if (hasShortcuts)
+            button.title = String.vsprintf(buttonTitle, [button.shortcuts[0].name]);
+        else
+            button.title = buttonTitle;
+    },
+
+    /**
+     * @param {string} buttonId
+     * @param {string} buttonTitle
+     * @param {function(Event)} handler
+     * @param {!Array.<!WebInspector.KeyboardShortcut.Descriptor>} shortcuts
+     */
+    _createButtonAndRegisterShortcuts: function(buttonId, buttonTitle, handler, shortcuts)
+    {
+        var button = document.createElement("button");
+        button.className = "status-bar-item";
+        button.id = buttonId;
+        button.shortcuts = shortcuts;
+        this._updateButtonTitle(button, buttonTitle);
+        button.disabled = true;
+        button.appendChild(document.createElement("img"));
+        button.addEventListener("click", handler, false);
+
+        this.registerShortcuts(shortcuts, handler);
+
+        return button;
+    },
+
+    searchCanceled: function()
+    {
+        if (this._searchView)
+            this._searchView.searchCanceled();
+
+        delete this._searchView;
+        delete this._searchQuery;
+    },
+
+    /**
+     * @param {string} query
+     */
+    performSearch: function(query)
+    {
+        WebInspector.searchController.updateSearchMatchesCount(0, this);
+
+        if (!this.visibleView)
+            return;
+
+        // Call searchCanceled since it will reset everything we need before doing a new search.
+        this.searchCanceled();
+
+        this._searchView = this.visibleView;
+        this._searchQuery = query;
+
+        function finishedCallback(view, searchMatches)
+        {
+            if (!searchMatches)
+                return;
+
+            WebInspector.searchController.updateSearchMatchesCount(searchMatches, this);
+            view.jumpToNextSearchResult();
+            WebInspector.searchController.updateCurrentMatchIndex(view.currentSearchResultIndex, this);
+        }
+
+        this._searchView.performSearch(query, finishedCallback.bind(this));
+    },
+
+    jumpToNextSearchResult: function()
+    {
+        if (!this._searchView)
+            return;
+
+        if (this._searchView !== this.visibleView) {
+            this.performSearch(this._searchQuery);
+            return;
+        }
+
+        if (this._searchView.showingLastSearchResult())
+            this._searchView.jumpToFirstSearchResult();
+        else
+            this._searchView.jumpToNextSearchResult();
+        WebInspector.searchController.updateCurrentMatchIndex(this._searchView.currentSearchResultIndex, this);
+        return true;
+    },
+
+    jumpToPreviousSearchResult: function()
+    {
+        if (!this._searchView)
+            return false;
+
+        if (this._searchView !== this.visibleView) {
+            this.performSearch(this._searchQuery);
+            if (this._searchView)
+                this._searchView.jumpToLastSearchResult();
+            return;
+        }
+
+        if (this._searchView.showingFirstSearchResult())
+            this._searchView.jumpToLastSearchResult();
+        else
+            this._searchView.jumpToPreviousSearchResult();
+        WebInspector.searchController.updateCurrentMatchIndex(this._searchView.currentSearchResultIndex, this);
+    },
+
+    /**
+     * @return {boolean}
+     */
+    canSearchAndReplace: function()
+    {
+        var view = /** @type {WebInspector.SourceFrame} */ (this.visibleView);
+        return !!view && view.canEditSource();
+    },
+
+    /**
+     * @param {string} text
+     */
+    replaceSelectionWith: function(text)
+    {
+        var view = /** @type {WebInspector.SourceFrame} */ (this.visibleView);
+        view.replaceSearchMatchWith(text);
+    },
+
+    /**
+     * @param {string} query
+     * @param {string} text
+     */
+    replaceAllWith: function(query, text)
+    {
+        var view = /** @type {WebInspector.SourceFrame} */ (this.visibleView);
+        view.replaceAllWith(query, text);
+    },
+
+    _toggleFormatSource: function()
+    {
+        this._toggleFormatSourceButton.toggled = !this._toggleFormatSourceButton.toggled;
+        var uiSourceCodes = this._workspace.uiSourceCodes();
+        for (var i = 0; i < uiSourceCodes.length; ++i)
+            uiSourceCodes[i].setFormatted(this._toggleFormatSourceButton.toggled);
+
+        WebInspector.notifications.dispatchEventToListeners(WebInspector.UserMetrics.UserAction, {
+            action: WebInspector.UserMetrics.UserActionNames.TogglePrettyPrint,
+            enabled: this._toggleFormatSourceButton.toggled,
+            url: this._editorContainer.currentFile().originURL()
+        });
+    },
+
+    addToWatch: function(expression)
+    {
+        this.sidebarPanes.watchExpressions.addExpression(expression);
+    },
+
+    _toggleBreakpoint: function()
+    {
+        var sourceFrame = this.visibleView;
+        if (!sourceFrame)
+            return;
+
+        if (sourceFrame instanceof WebInspector.JavaScriptSourceFrame) {
+            var javaScriptSourceFrame = /** @type {WebInspector.JavaScriptSourceFrame} */ (sourceFrame);
+            javaScriptSourceFrame.toggleBreakpointOnCurrentLine();
+        }            
+    },
+
+    _showOutlineDialog: function()
+    {
+        var uiSourceCode = this._editorContainer.currentFile();
+        if (!uiSourceCode)
+            return;
+
+        switch (uiSourceCode.contentType()) {
+        case WebInspector.resourceTypes.Document:
+        case WebInspector.resourceTypes.Script:
+            WebInspector.JavaScriptOutlineDialog.show(this.visibleView, uiSourceCode);
+            break;
+        case WebInspector.resourceTypes.Stylesheet:
+            WebInspector.StyleSheetOutlineDialog.show(this.visibleView, uiSourceCode);
+            break;
+        }
+    },
+
+    _installDebuggerSidebarController: function()
+    {
+        this._toggleDebuggerSidebarButton = new WebInspector.StatusBarButton(WebInspector.UIString("Hide debugger"), "scripts-debugger-show-hide-button", 3);
+        this._toggleDebuggerSidebarButton.state = "shown";
+        this._toggleDebuggerSidebarButton.addEventListener("click", clickHandler, this);
+
+        function clickHandler()
+        {
+            if (this._toggleDebuggerSidebarButton.state === "shown")
+                this._hideDebuggerSidebar();
+            else
+                this._showDebuggerSidebar();
+        }
+        this.editorView.element.appendChild(this._toggleDebuggerSidebarButton.element);
+
+        if (WebInspector.settings.debuggerSidebarHidden.get())
+            this._hideDebuggerSidebar();
+
+    },
+
+    _showDebuggerSidebar: function()
+    {
+        if (this._toggleDebuggerSidebarButton.state === "shown")
+            return;
+        this._toggleDebuggerSidebarButton.state = "shown";
+        this._toggleDebuggerSidebarButton.title = WebInspector.UIString("Hide debugger");
+        this.splitView.showSidebarElement();
+        this.debugSidebarResizeWidgetElement.removeStyleClass("hidden");
+        WebInspector.settings.debuggerSidebarHidden.set(false);
+    },
+
+    _hideDebuggerSidebar: function()
+    {
+        if (this._toggleDebuggerSidebarButton.state === "hidden")
+            return;
+        this._toggleDebuggerSidebarButton.state = "hidden";
+        this._toggleDebuggerSidebarButton.title = WebInspector.UIString("Show debugger");
+        this.splitView.hideSidebarElement();
+        this.debugSidebarResizeWidgetElement.addStyleClass("hidden");
+        WebInspector.settings.debuggerSidebarHidden.set(true);
+    },
+
+    _fileRenamed: function(event)
+    {
+        var uiSourceCode = /** @type {WebInspector.UISourceCode} */ (event.data.uiSourceCode);
+        var name = /** @type {string} */ (event.data.name);
+        if (!uiSourceCode.project().type() === WebInspector.projectTypes.Snippets)
+            return;
+        WebInspector.scriptSnippetModel.renameScriptSnippet(uiSourceCode, name);
+    },
+        
+    /**
+     * @param {WebInspector.Event} event
+     */
+    _snippetCreationRequested: function(event)
+    {
+        var uiSourceCode = WebInspector.scriptSnippetModel.createScriptSnippet();
+        this._showSourceLine(uiSourceCode);
+        
+        var shouldHideNavigator = !this._navigatorController.isNavigatorPinned();
+        if (this._navigatorController.isNavigatorHidden())
+            this._navigatorController.showNavigatorOverlay();
+        this._navigator.rename(uiSourceCode, callback.bind(this));
+    
+        /**
+         * @param {boolean} committed
+         */
+        function callback(committed)
+        {
+            if (shouldHideNavigator)
+                this._navigatorController.hideNavigatorOverlay();
+
+            if (!committed) {
+                WebInspector.scriptSnippetModel.deleteScriptSnippet(uiSourceCode);
+                return;
+            }
+
+            this._showSourceLine(uiSourceCode);
+        }
+    },
+
+    /**
+     * @param {WebInspector.Event} event
+     */
+    _itemRenamingRequested: function(event)
+    {
+        var uiSourceCode = /** @type {WebInspector.UISourceCode} */ (event.data);
+        
+        var shouldHideNavigator = !this._navigatorController.isNavigatorPinned();
+        if (this._navigatorController.isNavigatorHidden())
+            this._navigatorController.showNavigatorOverlay();
+        this._navigator.rename(uiSourceCode, callback.bind(this));
+    
+        /**
+         * @param {boolean} committed
+         */
+        function callback(committed)
+        {
+            if (shouldHideNavigator && committed) {
+                this._navigatorController.hideNavigatorOverlay();
+                this._showSourceLine(uiSourceCode);
+            }
+        }
+    },
+
+    /**
+     * @param {WebInspector.UISourceCode} uiSourceCode
+     */
+    _showLocalHistory: function(uiSourceCode)
+    {
+        WebInspector.RevisionHistoryView.showHistory(uiSourceCode);
+    },
+
+    /**
+     * @param {WebInspector.ContextMenu} contextMenu
+     * @param {Object} target
+     */
+    appendApplicableItems: function(event, contextMenu, target)
+    {
+        this._appendUISourceCodeItems(contextMenu, target);
+        this._appendFunctionItems(contextMenu, target);
+    },
+
+    /** 
+     * @param {WebInspector.ContextMenu} contextMenu
+     * @param {Object} target
+     */
+    _appendUISourceCodeItems: function(contextMenu, target)
+    {
+        if (!(target instanceof WebInspector.UISourceCode))
+            return;
+
+        var uiSourceCode = /** @type {WebInspector.UISourceCode} */ (target);
+        contextMenu.appendItem(WebInspector.UIString("Local modifications..."), this._showLocalHistory.bind(this, uiSourceCode));
+        var resource = WebInspector.resourceForURL(uiSourceCode.url);
+        if (resource && resource.request)
+            contextMenu.appendApplicableItems(resource.request);
+
+        if (WebInspector.inspectorView.currentPanel() === this)
+            this._populateContextMenuForSidebar(contextMenu);
+    },
+
+    /** 
+     * @param {WebInspector.ContextMenu} contextMenu
+     * @param {Object} target
+     */
+    _appendFunctionItems: function(contextMenu, target)
+    {
+        if (!(target instanceof WebInspector.RemoteObject))
+            return;
+        var remoteObject = /** @type {WebInspector.RemoteObject} */ (target);
+        if (remoteObject.type !== "function")
+            return;
+
+        function didGetDetails(error, response)
+        {
+            if (error) {
+                console.error(error);
+                return;
+            }
+            WebInspector.inspectorView.showPanelForAnchorNavigation(this);
+            var uiLocation = WebInspector.debuggerModel.rawLocationToUILocation(response.location);
+            this._showSourceLine(uiLocation.uiSourceCode, uiLocation.lineNumber);
+        }
+
+        function revealFunction()
+        {
+            DebuggerAgent.getFunctionDetails(remoteObject.objectId, didGetDetails.bind(this));
+        }
+
+        contextMenu.appendItem(WebInspector.UIString("Show function definition"), revealFunction.bind(this));
+    },
+
+    showGoToSourceDialog: function()
+    {
+        WebInspector.OpenResourceDialog.show(this, this.editorView.mainElement);
+    },
+
+    _contextMenuEventFired: function(event)
+    {
+        var contextMenu = new WebInspector.ContextMenu(event);
+        this._populateContextMenuForSidebar(contextMenu);
+        contextMenu.show();
+    },
+
+    _sidebarContextMenuEventFired: function(event)
+    {
+        var contextMenu = new WebInspector.ContextMenu(event);
+        this._populateContextMenuForSidebar(contextMenu);
+        contextMenu.show();
+    },
+
+    _populateContextMenuForSidebar: function(contextMenu)
+    {
+        if (!WebInspector.experimentsSettings.horizontalPanelSplit.isEnabled())
+            return;
+
+        function toggleSetting(setting)
+        {
+            setting.set(!setting.get());
+        }
+        contextMenu.appendCheckboxItem(WebInspector.UIString(WebInspector.useLowerCaseMenuTitles() ? "Split horizontally" : "Split Horizontally"), toggleSetting.bind(this, this._splitDirectionSetting), this._splitDirectionSetting.get());
+
+        if (!this.splitView.isVertical())
+            contextMenu.appendCheckboxItem(WebInspector.UIString(WebInspector.useLowerCaseMenuTitles() ? "Split sidebar" : "Split Sidebar"), toggleSetting.bind(this, this._splitSidebarSetting), this._splitSidebarSetting.get());
+    },
+
+    _arrangeSidebarPanes: function()
+    {
+        if (this.sidebarPaneView)
+            this.sidebarPaneView.detach();
+
+        var vertical = !WebInspector.experimentsSettings.horizontalPanelSplit.isEnabled() || !this._splitDirectionSetting.get();
+        this.splitView.setVertical(vertical);
+
+        if (vertical) {
+            this.sidebarPaneView = new WebInspector.SidebarPaneStack();
+            for (var pane in this.sidebarPanes)
+                this.sidebarPaneView.addPane(this.sidebarPanes[pane]);
+        } else if (!this._splitSidebarSetting.get()) {
+            this.sidebarPaneView = new WebInspector.SidebarTabbedPane();
+            for (var pane in this.sidebarPanes)
+                this.sidebarPaneView.addPane(this.sidebarPanes[pane]);
+        } else {
+            this.sidebarPaneView = new WebInspector.SplitView(true, this.name + "PanelSplitSidebarRatio", 0.5);
+
+            var group1 = new WebInspector.SidebarPaneStack();
+            group1.show(this.sidebarPaneView.firstElement());
+            group1.addPane(this.sidebarPanes.watchExpressions);
+            group1.addPane(this.sidebarPanes.callstack);
+            group1.addPane(this.sidebarPanes.scopechain);
+
+            var group2 = new WebInspector.SidebarTabbedPane();
+            group2.show(this.sidebarPaneView.secondElement());
+            group2.addPane(this.sidebarPanes.jsBreakpoints);
+            group2.addPane(this.sidebarPanes.domBreakpoints);
+            group2.addPane(this.sidebarPanes.xhrBreakpoints);
+            group2.addPane(this.sidebarPanes.eventListenerBreakpoints);
+        }
+
+        this.sidebarPaneView.element.id = "scripts-debug-sidebar-contents";
+        this.sidebarPaneView.show(this.splitView.sidebarElement);
+
+        this.sidebarPanes.scopechain.expand();
+        this.sidebarPanes.jsBreakpoints.expand();
+        this.sidebarPanes.callstack.expand();
+
+        if (WebInspector.settings.watchExpressions.get().length > 0)
+            this.sidebarPanes.watchExpressions.expand();
+    },
+
+    __proto__: WebInspector.Panel.prototype
 }
-
-WebInspector.ScriptsPanel.prototype.__proto__ = WebInspector.Panel.prototype;
-
-WebInspector.didEditScriptSource = WebInspector.Callback.processCallback;
