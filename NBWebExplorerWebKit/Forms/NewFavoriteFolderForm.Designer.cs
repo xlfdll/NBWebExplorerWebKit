@@ -72,8 +72,6 @@
             resources.ApplyResources(this.locationComboBox, "locationComboBox");
             this.locationComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.locationComboBox.FormattingEnabled = true;
-            this.locationComboBox.Items.AddRange(new object[] {
-            resources.GetString("locationComboBox.Items")});
             this.locationComboBox.Name = "locationComboBox";
             // 
             // controlFlowLayoutPanel

@@ -130,13 +130,10 @@
   </data>
   <assembly alias="System.Drawing" name="System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
   <data name="nameLabel.Location" type="System.Drawing.Point, System.Drawing">
-    <value>7, 0</value>
-  </data>
-  <data name="nameLabel.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>7, 0, 7, 0</value>
+    <value>3, 0</value>
   </data>
   <data name="nameLabel.Size" type="System.Drawing.Size, System.Drawing">
-    <value>95, 43</value>
+    <value>48, 25</value>
   </data>
   <data name="nameLabel.TabIndex" type="System.Int32, mscorlib">
     <value>0</value>
@@ -169,13 +166,10 @@
     <value>NoControl</value>
   </data>
   <data name="locationLabel.Location" type="System.Drawing.Point, System.Drawing">
-    <value>7, 43</value>
-  </data>
-  <data name="locationLabel.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>7, 0, 7, 0</value>
+    <value>3, 25</value>
   </data>
   <data name="locationLabel.Size" type="System.Drawing.Size, System.Drawing">
-    <value>95, 44</value>
+    <value>48, 26</value>
   </data>
   <data name="locationLabel.TabIndex" type="System.Int32, mscorlib">
     <value>1</value>
@@ -202,13 +196,10 @@
     <value>Left, Right</value>
   </data>
   <data name="nameTextBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>116, 6</value>
-  </data>
-  <data name="nameTextBox.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>7, 6, 7, 6</value>
+    <value>57, 3</value>
   </data>
   <data name="nameTextBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>625, 31</value>
+    <value>285, 19</value>
   </data>
   <data name="nameTextBox.TabIndex" type="System.Int32, mscorlib">
     <value>2</value>
@@ -228,17 +219,11 @@
   <data name="locationComboBox.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
     <value>Left, Right</value>
   </data>
-  <data name="locationComboBox.Items" xml:space="preserve">
-    <value>Favorites</value>
-  </data>
   <data name="locationComboBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>116, 49</value>
-  </data>
-  <data name="locationComboBox.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>7, 6, 7, 6</value>
+    <value>57, 28</value>
   </data>
   <data name="locationComboBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>625, 32</value>
+    <value>285, 20</value>
   </data>
   <data name="locationComboBox.TabIndex" type="System.Int32, mscorlib">
     <value>7</value>
@@ -262,13 +247,10 @@
     <value>NoControl</value>
   </data>
   <data name="cancelButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>554, 6</value>
-  </data>
-  <data name="cancelButton.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>7, 6, 7, 6</value>
+    <value>256, 3</value>
   </data>
   <data name="cancelButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>173, 46</value>
+    <value>80, 23</value>
   </data>
   <data name="cancelButton.TabIndex" type="System.Int32, mscorlib">
     <value>6</value>
@@ -295,13 +277,10 @@
     <value>NoControl</value>
   </data>
   <data name="okButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>367, 6</value>
-  </data>
-  <data name="okButton.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>7, 6, 7, 6</value>
+    <value>170, 3</value>
   </data>
   <data name="okButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>173, 46</value>
+    <value>80, 23</value>
   </data>
   <data name="okButton.TabIndex" type="System.Int32, mscorlib">
     <value>5</value>
@@ -328,13 +307,10 @@
     <value>RightToLeft</value>
   </data>
   <data name="controlFlowLayoutPanel.Location" type="System.Drawing.Point, System.Drawing">
-    <value>7, 93</value>
-  </data>
-  <data name="controlFlowLayoutPanel.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>7, 6, 7, 6</value>
+    <value>3, 54</value>
   </data>
   <data name="controlFlowLayoutPanel.Size" type="System.Drawing.Size, System.Drawing">
-    <value>734, 73</value>
+    <value>339, 48</value>
   </data>
   <data name="controlFlowLayoutPanel.TabIndex" type="System.Int32, mscorlib">
     <value>8</value>
@@ -357,14 +333,11 @@
   <data name="mainTableLayoutPanel.Location" type="System.Drawing.Point, System.Drawing">
     <value>0, 0</value>
   </data>
-  <data name="mainTableLayoutPanel.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>7, 6, 7, 6</value>
-  </data>
   <data name="mainTableLayoutPanel.RowCount" type="System.Int32, mscorlib">
     <value>3</value>
   </data>
   <data name="mainTableLayoutPanel.Size" type="System.Drawing.Size, System.Drawing">
-    <value>748, 172</value>
+    <value>345, 86</value>
   </data>
   <data name="mainTableLayoutPanel.TabIndex" type="System.Int32, mscorlib">
     <value>0</value>
@@ -388,13 +361,10 @@
     <value>True</value>
   </metadata>
   <data name="$this.AutoScaleDimensions" type="System.Drawing.SizeF, System.Drawing">
-    <value>13, 24</value>
+    <value>6, 12</value>
   </data>
   <data name="$this.ClientSize" type="System.Drawing.Size, System.Drawing">
-    <value>748, 172</value>
-  </data>
-  <data name="$this.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>7, 6, 7, 6</value>
+    <value>345, 86</value>
   </data>
   <data name="$this.StartPosition" type="System.Windows.Forms.FormStartPosition, System.Windows.Forms">
     <value>CenterParent</value>

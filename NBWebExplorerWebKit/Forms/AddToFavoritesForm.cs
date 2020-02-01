@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Text;
+using System.IO;
 using System.Windows.Forms;
 
 namespace NBWebExplorerWebKit
@@ -21,6 +21,8 @@ namespace NBWebExplorerWebKit
 
         private void AddFavoriteForm_Load(object sender, EventArgs e)
         {
+            locationComboBox.Items.Add("Favorites");
+
             FormHelper.AddFavoriteFolders(locationComboBox, Environment.GetFolderPath(Environment.SpecialFolder.Favorites), 1);
 
             locationComboBox.SelectedIndex = 0;
@@ -33,18 +35,51 @@ namespace NBWebExplorerWebKit
 
         private void newFolderButton_Click(object sender, EventArgs e)
         {
-            using (NewFavoriteFolderForm form = new NewFavoriteFolderForm())
+            using (NewFavoriteFolderForm form = new NewFavoriteFolderForm(locationComboBox.SelectedIndex))
             {
-                form.ShowDialog(this);
+                if (form.ShowDialog(this) == DialogResult.OK)
+                {
+                    locationComboBox.Items.Clear();
+
+                    AddFavoriteForm_Load(sender, e);
+
+                    String[] newFolderNameEntries = form.NewFolderName.Split
+                        (new String[] { @"\" },
+                        StringSplitOptions.RemoveEmptyEntries);
+
+                    for (Int32 i = locationComboBox.Items.IndexOf(newFolderNameEntries[0]); i < locationComboBox.Items.Count; i++)
+                    {
+                        if (locationComboBox.Items[i].ToString().Trim() == newFolderNameEntries[1])
+                        {
+                            locationComboBox.SelectedIndex = i;
+
+                            break;
+                        }
+                    }
+                }
             }
         }
 
         private void okButton_Click(object sender, EventArgs e)
         {
-            Int32 selectedIndex = locationComboBox.SelectedIndex;
-            StringBuilder sb = new StringBuilder();
+            foreach (Char c in Path.GetInvalidFileNameChars())
+            {
+                if (titleTextBox.Text.Contains(c.ToString()))
+                {
+                    MessageBox.Show(this, "Title cannot have invalid character '" + c + "'.", this.Text,
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
 
-            
+                    return;
+                }
+            }
+
+            IOHelper.CreateInternetShortcutFile
+                (FormHelper.GetSelectedFavoriteFolderPath(locationComboBox),
+                titleTextBox.Text, this.Tag.ToString());
+
+            this.DialogResult = DialogResult.OK;
+
+            this.Close();
         }
     }
 }

@@ -84,18 +84,15 @@
     <Compile Include="..\XDLibrary\Xlfdll.Core\Configuration\IConfigurationProcessor.cs">
       <Link>Base\Configuration\IConfigurationProcessor.cs</Link>
     </Compile>
+    <Compile Include="..\XDLibrary\Xlfdll.Core\IO\PathExtensions.cs">
+      <Link>Base\IO\PathExtensions.cs</Link>
+    </Compile>
     <Compile Include="..\XDLibrary\Xlfdll.Windows\Configuration\RegistryConfigurationProcessor.cs">
       <Link>Base\Configuration\Windows\RegistryConfigurationProcessor.cs</Link>
     </Compile>
     <Compile Include="Facilities\AppSettings.cs" />
     <Compile Include="Helpers\DataHelper.cs" />
     <Compile Include="Helpers\ApplicationHelper.cs" />
-    <Compile Include="Forms\DownloadsForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\DownloadsForm.Designer.cs">
-      <DependentUpon>DownloadsForm.cs</DependentUpon>
-    </Compile>
     <Compile Include="Forms\AddToFavoritesForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -127,12 +124,9 @@
     <Compile Include="Forms\OptionsForm.Designer.cs">
       <DependentUpon>OptionsForm.cs</DependentUpon>
     </Compile>
-    <Compile Include="Models\DownloadFileItem.cs" />
+    <Compile Include="Helpers\IOHelper.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <EmbeddedResource Include="Forms\DownloadsForm.resx">
-      <DependentUpon>DownloadsForm.cs</DependentUpon>
-    </EmbeddedResource>
     <EmbeddedResource Include="Forms\AddToFavoritesForm.resx">
       <DependentUpon>AddToFavoritesForm.cs</DependentUpon>
     </EmbeddedResource>

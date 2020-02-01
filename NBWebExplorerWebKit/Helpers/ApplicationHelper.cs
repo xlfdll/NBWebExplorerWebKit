@@ -10,6 +10,7 @@ namespace NBWebExplorerWebKit
             ApplicationHelper.Settings = new AppSettings(new ApplicationConfiguration
                 (new RegistryConfigurationProcessor(@"Xlfdll\NB\NBWebExplorer", RegistryConfigurationScope.User)));
         }
+
         internal static AppSettings Settings { get; }
     }
 }

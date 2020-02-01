@@ -133,7 +133,7 @@
     <value>3, 0</value>
   </data>
   <data name="titleLabel.Size" type="System.Drawing.Size, System.Drawing">
-    <value>53, 27</value>
+    <value>48, 25</value>
   </data>
   <data name="titleLabel.TabIndex" type="System.Int32, mscorlib">
     <value>0</value>
@@ -166,10 +166,10 @@
     <value>NoControl</value>
   </data>
   <data name="locationLabel.Location" type="System.Drawing.Point, System.Drawing">
-    <value>3, 27</value>
+    <value>3, 25</value>
   </data>
   <data name="locationLabel.Size" type="System.Drawing.Size, System.Drawing">
-    <value>53, 29</value>
+    <value>48, 29</value>
   </data>
   <data name="locationLabel.TabIndex" type="System.Int32, mscorlib">
     <value>1</value>
@@ -196,10 +196,10 @@
     <value>Left, Right</value>
   </data>
   <data name="titleTextBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>62, 3</value>
+    <value>57, 3</value>
   </data>
   <data name="titleTextBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>280, 21</value>
+    <value>285, 19</value>
   </data>
   <data name="titleTextBox.TabIndex" type="System.Int32, mscorlib">
     <value>2</value>
@@ -220,7 +220,7 @@
     <value>Fill</value>
   </data>
   <data name="newFolderButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>262, 30</value>
+    <value>262, 28</value>
   </data>
   <data name="newFolderButton.Size" type="System.Drawing.Size, System.Drawing">
     <value>80, 23</value>
@@ -250,7 +250,7 @@
     <value>NoControl</value>
   </data>
   <data name="okButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>176, 59</value>
+    <value>176, 58</value>
   </data>
   <data name="okButton.Size" type="System.Drawing.Size, System.Drawing">
     <value>80, 23</value>
@@ -280,7 +280,7 @@
     <value>NoControl</value>
   </data>
   <data name="cancelButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>262, 59</value>
+    <value>262, 58</value>
   </data>
   <data name="cancelButton.Size" type="System.Drawing.Size, System.Drawing">
     <value>80, 23</value>
@@ -306,14 +306,11 @@
   <data name="locationComboBox.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
     <value>Left, Right</value>
   </data>
-  <data name="locationComboBox.Items" xml:space="preserve">
-    <value>Favorites</value>
-  </data>
   <data name="locationComboBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>62, 31</value>
+    <value>57, 29</value>
   </data>
   <data name="locationComboBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>194, 20</value>
+    <value>199, 20</value>
   </data>
   <data name="locationComboBox.TabIndex" type="System.Int32, mscorlib">
     <value>7</value>

@@ -5,11 +5,11 @@ using System.Drawing;
 using System.Windows.Forms;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 
 using WebKit;
 
 using NBWebExplorerWebKit.Properties;
-using System.Text;
 
 namespace NBWebExplorerWebKit
 {
@@ -33,8 +33,6 @@ namespace NBWebExplorerWebKit
             this.Size = new Size(Convert.ToInt32(Screen.PrimaryScreen.WorkingArea.Width * 0.80), Convert.ToInt32(Screen.PrimaryScreen.WorkingArea.Height * 0.80));
 
             openNewWebBrowserTabPage(0, ApplicationHelper.Settings.HomePage);
-
-            this._downloadsForm = new DownloadsForm();
         }
 
         private void MainForm_DoubleClick(object sender, EventArgs e)
@@ -356,11 +354,7 @@ namespace NBWebExplorerWebKit
 
             if (webBrowserTabPage != null)
             {
-                if (e.ClickedItem == downloadsToolStripMenuItem)
-                {
-                    _downloadsForm.Show(this);
-                }
-                else if (e.ClickedItem == optionsToolStripMenuItem)
+                if (e.ClickedItem == optionsToolStripMenuItem)
                 {
                     using (OptionsForm form = new OptionsForm(webBrowserTabPage))
                     {
@@ -613,14 +607,9 @@ namespace NBWebExplorerWebKit
             mainToolStripStatusLabel.Text = "Ready";
         }
 
-        private void webBrowser_DownloadBegin(object sender, FileDownloadBeginEventArgs e)
-        {
-            _downloadsForm.Show(this);
-        }
-
         private void webBrowser_Error(object sender, WebKitBrowserErrorEventArgs e)
         {
-            errorToolTip.Show(e.Description, mainStatusStrip, 5000);
+            errorToolTip.Show(e.Description, mainTabControl, 5000);
         }
 
         #endregion
@@ -641,7 +630,6 @@ namespace NBWebExplorerWebKit
             webBrowserTabPage.Browser.Navigated += webBrowser_Navigated;
             webBrowserTabPage.Browser.DocumentTitleChanged += webBrowser_DocumentTitleChanged;
             webBrowserTabPage.Browser.DocumentCompleted += webBrowser_DocumentCompleted;
-            webBrowserTabPage.Browser.DownloadBegin += webBrowser_DownloadBegin;
             webBrowserTabPage.Browser.Error += webBrowser_Error;
 
             mainTabControl.TabPages.Insert(index, webBrowserTabPage);
@@ -776,8 +764,6 @@ namespace NBWebExplorerWebKit
                 }
             }
         }
-
-        private DownloadsForm _downloadsForm;
 
         #endregion
     }
