@@ -109,7 +109,6 @@
             this.Name = "NewFavoriteFolderForm";
             this.ShowIcon = false;
             this.ShowInTaskbar = false;
-            this.Load += new System.EventHandler(this.NewFavoriteFolderForm_Load);
             this.mainTableLayoutPanel.ResumeLayout(false);
             this.mainTableLayoutPanel.PerformLayout();
             this.controlFlowLayoutPanel.ResumeLayout(false);

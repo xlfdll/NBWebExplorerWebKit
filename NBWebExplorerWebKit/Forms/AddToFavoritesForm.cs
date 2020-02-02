@@ -15,15 +15,14 @@ namespace NBWebExplorerWebKit
             : this()
         {
             titleTextBox.Text = title;
-
-            this.Tag = url;
+            titleTextBox.Tag = url;
         }
 
         private void AddFavoriteForm_Load(object sender, EventArgs e)
         {
-            locationComboBox.Items.Add("Favorites");
+            locationComboBox.Items.Clear();
 
-            FormHelper.AddFavoriteFolders(locationComboBox, Environment.GetFolderPath(Environment.SpecialFolder.Favorites), 1);
+            FormHelper.AddFavoriteFolders(locationComboBox, Environment.GetFolderPath(Environment.SpecialFolder.Favorites), 0);
 
             locationComboBox.SelectedIndex = 0;
         }
@@ -35,7 +34,7 @@ namespace NBWebExplorerWebKit
 
         private void newFolderButton_Click(object sender, EventArgs e)
         {
-            using (NewFavoriteFolderForm form = new NewFavoriteFolderForm(locationComboBox.SelectedIndex))
+            using (NewFavoriteFolderForm form = new NewFavoriteFolderForm(locationComboBox))
             {
                 if (form.ShowDialog(this) == DialogResult.OK)
                 {
@@ -43,19 +42,10 @@ namespace NBWebExplorerWebKit
 
                     AddFavoriteForm_Load(sender, e);
 
-                    String[] newFolderNameEntries = form.NewFolderName.Split
-                        (new String[] { @"\" },
-                        StringSplitOptions.RemoveEmptyEntries);
+                    FavoriteFolderItem newFolderItem = FormHelper.FindSpecificFavoriteFolder
+                        (form.NewFolderPath, locationComboBox.Items[0] as FavoriteFolderItem);
 
-                    for (Int32 i = locationComboBox.Items.IndexOf(newFolderNameEntries[0]); i < locationComboBox.Items.Count; i++)
-                    {
-                        if (locationComboBox.Items[i].ToString().Trim() == newFolderNameEntries[1])
-                        {
-                            locationComboBox.SelectedIndex = i;
-
-                            break;
-                        }
-                    }
+                    locationComboBox.SelectedItem = newFolderItem;
                 }
             }
         }
@@ -74,8 +64,8 @@ namespace NBWebExplorerWebKit
             }
 
             IOHelper.CreateInternetShortcutFile
-                (FormHelper.GetSelectedFavoriteFolderPath(locationComboBox),
-                titleTextBox.Text, this.Tag.ToString());
+                ((locationComboBox.SelectedItem as FavoriteFolderItem).FullPath,
+                titleTextBox.Text, titleTextBox.Tag.ToString());
 
             this.DialogResult = DialogResult.OK;
 

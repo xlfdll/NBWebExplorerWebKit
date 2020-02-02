@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Windows.Forms;
 
@@ -6,49 +7,47 @@ namespace NBWebExplorerWebKit
 {
     internal static class FormHelper
     {
-        internal static String GetSelectedFavoriteFolderPath(ComboBox locationComboBox)
+        internal static FavoriteFolderItem AddFavoriteFolders(ComboBox locationComboBox, String favoritePath, Int32 level)
         {
-            if (locationComboBox.SelectedIndex == 0)
-            {
-                return Environment.GetFolderPath(Environment.SpecialFolder.Favorites);
-            }
-            else
-            {
-                String currentPath = locationComboBox.SelectedItem.ToString().Trim();
+            FavoriteFolderItem root = new FavoriteFolderItem(favoritePath, level);
 
-                for (Int32 i = locationComboBox.SelectedIndex - 1; i > 0; i--)
+            locationComboBox.Items.Add(root);
+
+            String[] directories = Directory.GetDirectories(favoritePath);
+
+            foreach (String directory in directories)
+            {
+                FavoriteFolderItem childItem = FormHelper.AddFavoriteFolders(locationComboBox, directory, level + 1);
+
+                root.Children.Add(childItem.Name, childItem);
+            }
+
+            return root;
+        }
+
+        internal static FavoriteFolderItem FindSpecificFavoriteFolder(String fullPath, FavoriteFolderItem root)
+        {
+            fullPath = fullPath.Replace(root.FullPath, String.Empty).Trim('\\');
+
+            Queue<String> nameQueue = new Queue<String>(fullPath.Split(new String[] { @"\" }, StringSplitOptions.RemoveEmptyEntries));
+
+            FavoriteFolderItem currentFolderItem = root;
+
+            while (nameQueue.Count > 0)
+            {
+                String name = nameQueue.Dequeue();
+
+                if (currentFolderItem.Children.ContainsKey(name))
                 {
-                    currentPath = Path.Combine(locationComboBox.Items[i].ToString().Trim(), currentPath);
+                    currentFolderItem = currentFolderItem.Children[name];
                 }
-
-                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Favorites), currentPath);
-            }
-        }
-
-        internal static void AddFavoriteFolders(ComboBox locationComboBox, String favoritePath, Int32 level)
-        {
-            String[] entries = Directory.GetDirectories(favoritePath);
-
-            foreach (String entry in entries)
-            {
-                locationComboBox.Items.Add(new String(' ', level * FormHelper.FolderLevelMultiplier) + Path.GetFileNameWithoutExtension(entry));
-
-                FormHelper.AddFavoriteFolders(locationComboBox, entry, level + 1);
-            }
-        }
-
-        internal static Int32 GetFolderLabelLevel(String folderLabel)
-        {
-            Int32 spaceCount = 0;
-
-            for (Int32 i = 0; Char.IsWhiteSpace(folderLabel[i]); i++)
-            {
-                spaceCount++;
+                else
+                {
+                    return null;
+                }
             }
 
-            return spaceCount / FormHelper.FolderLevelMultiplier;
+            return currentFolderItem;
         }
-
-        internal const Int32 FolderLevelMultiplier = 2;
     }
 }

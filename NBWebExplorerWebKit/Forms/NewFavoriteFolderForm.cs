@@ -8,27 +8,23 @@ namespace NBWebExplorerWebKit
 {
     public partial class NewFavoriteFolderForm : Form
     {
-        public NewFavoriteFolderForm(Int32 selectedIndex)
+        public NewFavoriteFolderForm(ComboBox parentLocationComboBox)
         {
             InitializeComponent();
 
-            locationComboBox.Tag = selectedIndex;
+            foreach (Object item in parentLocationComboBox.Items)
+            {
+                locationComboBox.Items.Add(item);
+            }
+
+            locationComboBox.SelectedIndex = parentLocationComboBox.SelectedIndex;
         }
 
-        private String _newFolderName;
+        private String _newFolderPath;
 
-        public String NewFolderName
+        public String NewFolderPath
         {
-            get { return _newFolderName; }
-        }
-
-        private void NewFavoriteFolderForm_Load(object sender, EventArgs e)
-        {
-            locationComboBox.Items.Add("Favorites");
-
-            FormHelper.AddFavoriteFolders(locationComboBox, Environment.GetFolderPath(Environment.SpecialFolder.Favorites), 1);
-
-            locationComboBox.SelectedIndex = (Int32)(locationComboBox.Tag);
+            get { return _newFolderPath; }
         }
 
         private void nameTextBox_TextChanged(object sender, EventArgs e)
@@ -38,14 +34,15 @@ namespace NBWebExplorerWebKit
 
         private void okButton_Click(object sender, EventArgs e)
         {
-            String parentPath = FormHelper.GetSelectedFavoriteFolderPath(locationComboBox);
+            FavoriteFolderItem parentFolderItem = locationComboBox.SelectedItem as FavoriteFolderItem;
+            String parentPath = parentFolderItem.FullPath;
             String newFolderPath = PathExtensions.GetSafePath(Path.Combine(parentPath, nameTextBox.Text));
 
             if (!Directory.Exists(newFolderPath))
             {
                 Directory.CreateDirectory(newFolderPath);
 
-                _newFolderName = locationComboBox.SelectedItem.ToString() + @"\" + nameTextBox.Text;
+                _newFolderPath = newFolderPath;
 
                 this.DialogResult = DialogResult.OK;
 
