@@ -28,13 +28,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/**
- * @constructor
- */
-WebInspector.DOMSyntaxHighlighter = function(mimeType, stripExtraWhitespace)
+WebInspector.DOMSyntaxHighlighter = function(mimeType)
 {
     this._tokenizer = WebInspector.SourceTokenizer.Registry.getInstance().getTokenizer(mimeType);
-    this._stripExtraWhitespace = stripExtraWhitespace;
 }
 
 WebInspector.DOMSyntaxHighlighter.prototype = {
@@ -42,15 +38,13 @@ WebInspector.DOMSyntaxHighlighter.prototype = {
     {
         var span = document.createElement("span");
         span.className = "webkit-" + className;
-        if (this._stripExtraWhitespace && className !== "whitespace")
-            content = content.replace(/^[\n\r]*/, "").replace(/\s*$/, "");
         span.appendChild(document.createTextNode(content));
         return span;
     },
 
     syntaxHighlightNode: function(node)
     {
-        this._tokenizer.condition = this._tokenizer.createInitialCondition();
+        this._tokenizer.condition = this._tokenizer.initialCondition;
         var lines = node.textContent.split("\n");
         node.removeChildren();
 

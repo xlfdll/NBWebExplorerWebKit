@@ -23,14 +23,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/**
- * @extends {WebInspector.View}
- * @constructor
- */
 WebInspector.PanelEnablerView = function(identifier, headingText, disclaimerText, buttonTitle)
 {
     WebInspector.View.call(this);
-    this.registerRequiredCSS("panelEnablerView.css");
 
     this.element.addStyleClass("panel-enabler-view");
     this.element.addStyleClass(identifier);
@@ -64,7 +59,7 @@ WebInspector.PanelEnablerView = function(identifier, headingText, disclaimerText
     };
 
     this.enabledForSession = enableOption(WebInspector.UIString("Only enable for this session"), true);
-    this.enabledAlways = enableOption(WebInspector.UIString("Always enable"), false);
+    this.enabledAlways = enableOption(WebInspector.UIString("Always enable"));
 
     this.disclaimerElement = document.createElement("div");
     this.disclaimerElement.className = "panel-enabler-disclaimer";
@@ -84,7 +79,14 @@ WebInspector.PanelEnablerView.prototype = {
         this.dispatchEventToListeners("enable clicked");
     },
 
-    onResize: function()
+    show: function(parentElement)
+    {
+        WebInspector.View.prototype.show.call(this, parentElement);
+
+        setTimeout(this.resize.bind(this), 0);
+    },
+
+    resize: function()
     {
         this.imageElement.removeStyleClass("hidden");
 
@@ -94,7 +96,7 @@ WebInspector.PanelEnablerView.prototype = {
 
     get alwaysEnabled() {
         return this.enabledAlways.checked;
-    },
-
-    __proto__: WebInspector.View.prototype
+    }
 }
+
+WebInspector.PanelEnablerView.prototype.__proto__ = WebInspector.View.prototype;

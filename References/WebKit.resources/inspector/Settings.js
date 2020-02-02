@@ -30,374 +30,94 @@
 
 
 var Preferences = {
+    canEditScriptSource: false,
     maxInlineTextChildLength: 80,
     minConsoleHeight: 75,
     minSidebarWidth: 100,
-    minSidebarHeight: 75,
     minElementsSidebarWidth: 200,
-    minElementsSidebarHeight: 200,
     minScriptsSidebarWidth: 200,
     styleRulesExpandedState: {},
     showMissingLocalizedStrings: false,
-    useLowerCaseMenuTitlesOnWindows: false,
-    sharedWorkersDebugNote: undefined,
-    localizeUI: true,
-    exposeDisableCache: false,
-    applicationTitle: "Web Inspector - %s",
-    showDockToRight: false,
-    exposeFileSystemInspection: false,
-    experimentsEnabled: true
-}
-
-var Capabilities = {
     samplingCPUProfiler: false,
-    debuggerCausesRecompilation: true,
-    separateScriptCompilationAndExecutionEnabled: false,
-    profilerCausesRecompilation: true,
-    heapProfilerPresent: false,
-    canOverrideDeviceMetrics: false,
-    timelineSupportsFrameInstrumentation: false,
-    timelineCanMonitorMainThread: false,
-    canOverrideGeolocation: false,
-    canOverrideDeviceOrientation: false,
-    canShowDebugBorders: false,
-    canShowFPSCounter: false,
-    canContinuouslyPaint: false
+    showColorNicknames: true,
+    debuggerAlwaysEnabled: false,
+    profilerAlwaysEnabled: false,
+    auditsPanelEnabled: true,
+    appCacheEnabled: true
 }
 
-/**
- * @constructor
- */
-WebInspector.Settings = function()
+WebInspector.populateApplicationSettings = function(settingsString)
 {
-    this._eventSupport = new WebInspector.Object();
+    WebInspector.applicationSettings._load(settingsString);
+    WebInspector.applicationSettings.installSetting("eventListenersFilter", "event-listeners-filter", "all");
+    WebInspector.applicationSettings.installSetting("colorFormat", "color-format", "hex");
+    WebInspector.applicationSettings.installSetting("resourcesLargeRows", "resources-large-rows", true);
+    WebInspector.applicationSettings.installSetting("watchExpressions", "watch-expressions", []);
+    WebInspector.applicationSettings.installSetting("lastViewedScriptFile", "last-viewed-script-file");
+    WebInspector.applicationSettings.installSetting("showInheritedComputedStyleProperties", "show-inherited-computed-style-properties", false);
+    WebInspector.applicationSettings.installSetting("showUserAgentStyles", "show-user-agent-styles", true);
+    WebInspector.applicationSettings.installSetting("resourceViewTab", "resource-view-tab", "content");
+    WebInspector.applicationSettings.installSetting("consoleHistory", "console-history", []);
 
-    this.colorFormat = this.createSetting("colorFormat", "original");
-    this.consoleHistory = this.createSetting("consoleHistory", []);
-    this.debuggerEnabled = this.createSetting("debuggerEnabled", false);
-    this.domWordWrap = this.createSetting("domWordWrap", true);
-    this.profilerEnabled = this.createSetting("profilerEnabled", false);
-    this.eventListenersFilter = this.createSetting("eventListenersFilter", "all");
-    this.lastActivePanel = this.createSetting("lastActivePanel", "elements");
-    this.lastViewedScriptFile = this.createSetting("lastViewedScriptFile", "application");
-    this.monitoringXHREnabled = this.createSetting("monitoringXHREnabled", false);
-    this.preserveConsoleLog = this.createSetting("preserveConsoleLog", false);
-    this.resourcesLargeRows = this.createSetting("resourcesLargeRows", true);
-    this.resourcesSortOptions = this.createSetting("resourcesSortOptions", {timeOption: "responseTime", sizeOption: "transferSize"});
-    this.resourceViewTab = this.createSetting("resourceViewTab", "preview");
-    this.showInheritedComputedStyleProperties = this.createSetting("showInheritedComputedStyleProperties", false);
-    this.showUserAgentStyles = this.createSetting("showUserAgentStyles", true);
-    this.watchExpressions = this.createSetting("watchExpressions", []);
-    this.breakpoints = this.createSetting("breakpoints", []);
-    this.eventListenerBreakpoints = this.createSetting("eventListenerBreakpoints", []);
-    this.domBreakpoints = this.createSetting("domBreakpoints", []);
-    this.xhrBreakpoints = this.createSetting("xhrBreakpoints", []);
-    this.sourceMapsEnabled = this.createSetting("sourceMapsEnabled", false);
-    this.cacheDisabled = this.createSetting("cacheDisabled", false);
-    this.overrideUserAgent = this.createSetting("overrideUserAgent", "");
-    this.userAgent = this.createSetting("userAgent", "");
-    this.deviceMetrics = this.createSetting("deviceMetrics", "");
-    this.deviceFitWindow = this.createSetting("deviceFitWindow", false);
-    this.emulateTouchEvents = this.createSetting("emulateTouchEvents", false);
-    this.showPaintRects = this.createSetting("showPaintRects", false);
-    this.continuousPainting = this.createSetting("continuousPainting", false);
-    this.showDebugBorders = this.createSetting("showDebugBorders", false);
-    this.showFPSCounter = this.createSetting("showFPSCounter", false);
-    this.showShadowDOM = this.createSetting("showShadowDOM", false);
-    this.zoomLevel = this.createSetting("zoomLevel", 0);
-    this.savedURLs = this.createSetting("savedURLs", {});
-    this.javaScriptDisabled = this.createSetting("javaScriptDisabled", false);
-    this.geolocationOverride = this.createSetting("geolocationOverride", "");
-    this.deviceOrientationOverride = this.createSetting("deviceOrientationOverride", "");
-    this.showHeapSnapshotObjectsHiddenProperties = this.createSetting("showHeaSnapshotObjectsHiddenProperties", false);
-    this.showNativeSnapshotUninstrumentedSize = this.createSetting("showNativeSnapshotUninstrumentedSize", false);
-    this.searchInContentScripts = this.createSetting("searchInContentScripts", false);
-    this.textEditorIndent = this.createSetting("textEditorIndent", "    ");
-    this.lastDockState = this.createSetting("lastDockState", "");
-    this.cssReloadEnabled = this.createSetting("cssReloadEnabled", false);
-    this.cssReloadTimeout = this.createSetting("cssReloadTimeout", 1000);
-    this.showCpuOnTimelineRuler = this.createSetting("showCpuOnTimelineRuler", false);
-    this.showMetricsRulers = this.createSetting("showMetricsRulers", false);
-    this.emulatedCSSMedia = this.createSetting("emulatedCSSMedia", "print");
-    this.showToolbarIcons = this.createSetting("showToolbarIcons", false);
-    this.workerInspectorWidth = this.createSetting("workerInspectorWidth", 600);
-    this.workerInspectorHeight = this.createSetting("workerInspectorHeight", 600);
-    this.messageURLFilters = this.createSetting("messageURLFilters", {});
+    WebInspector.applicationSettings.dispatchEventToListeners("loaded");
+}
+
+WebInspector.populateSessionSettings = function(settingsString)
+{
+    WebInspector.sessionSettings._load(settingsString);
+    WebInspector.sessionSettings.dispatchEventToListeners("loaded");
+}
+
+WebInspector.Settings = function(sessionScope)
+{
+    this._sessionScope = sessionScope;
+    this._defaultValues = {};
 }
 
 WebInspector.Settings.prototype = {
-    /**
-     * @return {WebInspector.Setting}
-     */
-    createSetting: function(key, defaultValue)
+    reset: function()
     {
-        return new WebInspector.Setting(key, defaultValue, this._eventSupport);
-    }
-}
-
-/**
- * @constructor
- */
-WebInspector.Setting = function(name, defaultValue, eventSupport)
-{
-    this._name = name;
-    this._defaultValue = defaultValue;
-    this._eventSupport = eventSupport;
-}
-
-WebInspector.Setting.prototype = {
-    addChangeListener: function(listener, thisObject)
-    {
-        this._eventSupport.addEventListener(this._name, listener, thisObject);
+        this._store = {};
+        this.dispatchEventToListeners("loaded");
     },
 
-    removeChangeListener: function(listener, thisObject)
+    _load: function(settingsString)
     {
-        this._eventSupport.removeEventListener(this._name, listener, thisObject);
-    },
-
-    get name()
-    {
-        return this._name;
-    },
-
-    get: function()
-    {
-        if (typeof this._value !== "undefined")
-            return this._value;
-
-        this._value = this._defaultValue;
-        if (window.localStorage != null && this._name in window.localStorage) {
-            try {
-                this._value = JSON.parse(window.localStorage[this._name]);
-            } catch(e) {
-                window.localStorage.removeItem(this._name);
-            }
+        try {
+            this._store = JSON.parse(settingsString);
+        } catch (e) {
+            // May fail;
+            this._store = {};
         }
-        return this._value;
     },
 
-    set: function(value)
+    installSetting: function(name, propertyName, defaultValue)
     {
-        this._value = value;
-        if (window.localStorage != null) {
-            try {
-                window.localStorage[this._name] = JSON.stringify(value);
-            } catch(e) {
-                console.error("Error saving setting with name:" + this._name);
-            }
+        this.__defineGetter__(name, this._get.bind(this, propertyName));
+        this.__defineSetter__(name, this._set.bind(this, propertyName));
+        this._defaultValues[propertyName] = defaultValue;
+    },
+
+    _get: function(propertyName)
+    {
+        if (propertyName in this._store)
+            return this._store[propertyName];
+        return this._defaultValues[propertyName];
+    },
+
+    _set: function(propertyName, newValue)
+    {
+        this._store[propertyName] = newValue;
+        try {
+            var store = JSON.stringify(this._store);
+            if (this._sessionScope)
+                InspectorBackend.saveSessionSettings(store);
+            else
+                InspectorBackend.saveApplicationSettings(store);
+        } catch (e) {
+            // May fail;
         }
-        this._eventSupport.dispatchEventToListeners(this._name, value);
     }
 }
 
-/**
- * @constructor
- */
-WebInspector.ExperimentsSettings = function()
-{
-    this._setting = WebInspector.settings.createSetting("experiments", {});
-    this._experiments = [];
-    this._enabledForTest = {};
-    
-    // Add currently running experiments here.
-    this.snippetsSupport = this._createExperiment("snippetsSupport", "Snippets support");
-    this.nativeMemorySnapshots = this._createExperiment("nativeMemorySnapshots", "Native memory profiling");
-    this.liveNativeMemoryChart = this._createExperiment("liveNativeMemoryChart", "Live native memory chart");
-    this.nativeMemoryTimeline = this._createExperiment("nativeMemoryTimeline", "Native memory timeline");
-    this.fileSystemInspection = this._createExperiment("fileSystemInspection", "FileSystem inspection");
-    this.canvasInspection = this._createExperiment("canvasInspection ", "Canvas inspection");
-    this.sass = this._createExperiment("sass", "Support for Sass");
-    this.codemirror = this._createExperiment("codemirror", "Use CodeMirror editor");
-    this.cssRegions = this._createExperiment("cssRegions", "CSS Regions Support");
-    this.showOverridesInDrawer = this._createExperiment("showOverridesInDrawer", "Show Overrides in drawer");
-    this.fileSystemProject = this._createExperiment("fileSystemProject", "File system folders in Sources Panel");
-    this.horizontalPanelSplit = this._createExperiment("horizontalPanelSplit", "Allow horizontal split in Elements and Sources panels");
-    this.showWhitespaceInEditor = this._createExperiment("showWhitespaceInEditor", "Show whitespace characters in editor");
-    this.textEditorSmartBraces = this._createExperiment("textEditorSmartBraces", "Enable smart braces in text editor");
-
-    this._cleanUpSetting();
-}
-
-WebInspector.ExperimentsSettings.prototype = {
-    /**
-     * @return {Array.<WebInspector.Experiment>}
-     */
-    get experiments()
-    {
-        return this._experiments.slice();
-    },
-    
-    /**
-     * @return {boolean}
-     */
-    get experimentsEnabled()
-    {
-        return Preferences.experimentsEnabled || ("experiments" in WebInspector.queryParamsObject);
-    },
-    
-    /**
-     * @param {string} experimentName
-     * @param {string} experimentTitle
-     * @return {WebInspector.Experiment}
-     */
-    _createExperiment: function(experimentName, experimentTitle)
-    {
-        var experiment = new WebInspector.Experiment(this, experimentName, experimentTitle);
-        this._experiments.push(experiment);
-        return experiment;
-    },
-    
-    /**
-     * @param {string} experimentName
-     * @return {boolean}
-     */
-    isEnabled: function(experimentName)
-    {
-        if (this._enabledForTest[experimentName])
-            return true;
-
-        if (!this.experimentsEnabled)
-            return false;
-        
-        var experimentsSetting = this._setting.get();
-        return experimentsSetting[experimentName];
-    },
-    
-    /**
-     * @param {string} experimentName
-     * @param {boolean} enabled
-     */
-    setEnabled: function(experimentName, enabled)
-    {
-        var experimentsSetting = this._setting.get();
-        experimentsSetting[experimentName] = enabled;
-        this._setting.set(experimentsSetting);
-    },
-
-    /**
-     * @param {string} experimentName
-     */
-    _enableForTest: function(experimentName)
-    {
-        this._enabledForTest[experimentName] = true;
-    },
-
-    _cleanUpSetting: function()
-    {
-        var experimentsSetting = this._setting.get();
-        var cleanedUpExperimentSetting = {};
-        for (var i = 0; i < this._experiments.length; ++i) {
-            var experimentName = this._experiments[i].name;
-            if (experimentsSetting[experimentName])
-                cleanedUpExperimentSetting[experimentName] = true;
-        }
-        this._setting.set(cleanedUpExperimentSetting);
-    }
-}
-
-/**
- * @constructor
- * @param {WebInspector.ExperimentsSettings} experimentsSettings
- * @param {string} name
- * @param {string} title
- */
-WebInspector.Experiment = function(experimentsSettings, name, title)
-{
-    this._name = name;
-    this._title = title;
-    this._experimentsSettings = experimentsSettings;
-}
-
-WebInspector.Experiment.prototype = {
-    /**
-     * @return {string}
-     */
-    get name()
-    {
-        return this._name;
-    },
-    
-    /**
-     * @return {string}
-     */
-    get title()
-    {
-        return this._title;
-    },
-    
-    /**
-     * @return {boolean}
-     */
-    isEnabled: function()
-    {
-        return this._experimentsSettings.isEnabled(this._name);
-    },
-    
-    /**
-     * @param {boolean} enabled
-     */
-    setEnabled: function(enabled)
-    {
-        return this._experimentsSettings.setEnabled(this._name, enabled);
-    },
-
-    enableForTest: function()
-    {
-        this._experimentsSettings._enableForTest(this._name);
-    }
-}
-
-/**
- * @constructor
- */
-WebInspector.VersionController = function()
-{
-}
-
-WebInspector.VersionController.currentVersion = 1;
-
-WebInspector.VersionController.prototype = {
-    updateVersion: function()
-    {
-        var versionSetting = WebInspector.settings.createSetting("inspectorVersion", 0);
-        var currentVersion = WebInspector.VersionController.currentVersion;
-        var oldVersion = versionSetting.get();
-        var methodsToRun = this._methodsToRunToUpdateVersion(oldVersion, currentVersion);
-        for (var i = 0; i < methodsToRun.length; ++i)
-            this[methodsToRun[i]].call(this);
-        versionSetting.set(currentVersion);
-    },
-
-    /**
-     * @param {number} oldVersion
-     * @param {number} currentVersion
-     */
-    _methodsToRunToUpdateVersion: function(oldVersion, currentVersion)
-    {
-        var result = [];
-        for (var i = oldVersion; i < currentVersion; ++i)
-            result.push("_updateVersionFrom" + i + "To" + (i + 1));
-        return result;
-    },
-
-    _updateVersionFrom0To1: function()
-    {
-        this._clearBreakpointsWhenTooMany(WebInspector.settings.breakpoints, 500000);
-    },
-
-    /**
-     * @param {WebInspector.Setting} breakpointsSetting
-     * @param {number} maxBreakpointsCount
-     */
-    _clearBreakpointsWhenTooMany: function(breakpointsSetting, maxBreakpointsCount)
-    {
-        // If there are too many breakpoints in a storage, it is likely due to a recent bug that caused
-        // periodical breakpoints duplication leading to inspector slowness.
-        if (breakpointsSetting.get().length > maxBreakpointsCount)
-            breakpointsSetting.set([]);
-    }
-}
-
-WebInspector.settings = new WebInspector.Settings();
-WebInspector.experimentsSettings = new WebInspector.ExperimentsSettings();
+WebInspector.Settings.prototype.__proto__ = WebInspector.Object.prototype;

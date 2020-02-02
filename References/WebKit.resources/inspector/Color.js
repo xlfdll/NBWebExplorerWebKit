@@ -27,44 +27,20 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/**
- * Don't call directly, use WebInspector.Color.parse(). 
- * @constructor 
- */
 WebInspector.Color = function(str)
 {
     this.value = str;
-}
-
-WebInspector.Color.parse = function(str)
-{
-    var maybeColor = new WebInspector.Color(str);
-    return maybeColor._parse() ? maybeColor : null;
-}
-/**
- * @param {number=} a
- */
-WebInspector.Color.fromRGBA = function(r, g, b, a)
-{
-    return WebInspector.Color.parse("rgba(" + r + "," + g + "," + b + "," + (typeof a === "undefined" ? 1 : a) + ")");
-}
-
-WebInspector.Color.fromRGB = function(r, g, b)
-{
-    return WebInspector.Color.parse("rgb(" + r + "," + g + "," + b + ")");
+    this._parse();
 }
 
 WebInspector.Color.prototype = {
-    /**
-     * @return {string}
-     */
     get shorthex()
     {
         if ("_short" in this)
             return this._short;
 
         if (!this.simple)
-            return "";
+            return null;
 
         var hex = this.hex;
         if (hex.charAt(0) === hex.charAt(1) && hex.charAt(2) === hex.charAt(3) && hex.charAt(4) === hex.charAt(5))
@@ -75,13 +51,10 @@ WebInspector.Color.prototype = {
         return this._short;
     },
 
-    /**
-     * @return {string}
-     */
     get hex()
     {
         if (!this.simple)
-            return "";
+            return null;
 
         return this._hex;
     },
@@ -91,12 +64,9 @@ WebInspector.Color.prototype = {
         this._hex = x;
     },
 
-    /**
-     * @return {Array.<number>}
-     */
     get rgb()
     {
-        if (this._rgb)
+        if ("_rgb" in this)
             return this._rgb;
 
         if (this.simple)
@@ -114,12 +84,9 @@ WebInspector.Color.prototype = {
         this._rgb = x;
     },
 
-    /**
-     * @return {Array.<number>}
-     */
     get hsl()
     {
-        if (this._hsl)
+        if ("_hsl" in this)
             return this._hsl;
 
         this._hsl = this._rgbToHSL(this.rgb);
@@ -131,15 +98,12 @@ WebInspector.Color.prototype = {
         this._hsl = x;
     },
 
-    /**
-     * @return {string}
-     */
     get nickname()
     {
         if (typeof this._nickname !== "undefined") // would be set on parse if there was a nickname
             return this._nickname;
         else
-            return "";
+            return null;
     },
 
     set nickname(x)
@@ -147,9 +111,6 @@ WebInspector.Color.prototype = {
         this._nickname = x;
     },
 
-    /**
-     * @return {Array.<number>}
-     */
     get rgba()
     {
         return this._rgba;
@@ -160,9 +121,6 @@ WebInspector.Color.prototype = {
         this._rgba = x;
     },
 
-    /**
-     * @return {Array.<number>}
-     */
     get hsla()
     {
         return this._hsla;
@@ -173,26 +131,18 @@ WebInspector.Color.prototype = {
         this._hsla = x;
     },
 
-    /**
-     * @return {boolean}
-     */
     hasShortHex: function()
     {
         var shorthex = this.shorthex;
-        return (!!shorthex && shorthex.length === 3);
+        return (shorthex && shorthex.length === 3);
     },
 
-    /**
-     * @return {string}
-     */
     toString: function(format)
     {
         if (!format)
             format = this.format;
 
         switch (format) {
-            case "original":
-                return this.value;
             case "rgb":
                 return "rgb(" + this.rgb.join(", ") + ")";
             case "rgba":
@@ -211,101 +161,24 @@ WebInspector.Color.prototype = {
                 return this.nickname;
         }
 
-        return "invalid color format: " + format;
+        throw "invalid color format";
     },
 
-    /**
-     * @return {Object}
-     */
-    toProtocolRGBA: function()
-    {
-        if (this._protocolRGBA)
-            return this._protocolRGBA;
-
-        var components = this.rgba;
-        if (components)
-            this._protocolRGBA = { r: Number(components[0]), g: Number(components[1]), b: Number(components[2]), a: Number(components[3]) };
-        else {
-            components = this.rgb;
-            this._protocolRGBA = { r: Number(components[0]), g: Number(components[1]), b: Number(components[2]) };
-        }
-        return this._protocolRGBA;
-    },
-
-    /**
-     * @param {number} value
-     * @param {number} min
-     * @param {number} max
-     * @return {number}
-     */
-    _clamp: function(value, min, max)
-    {
-        if (value < min)
-            return min;
-        if (value > max)
-            return max;
-        return value;
-    },
-
-    /**
-     * @param {number|string} rgbValue
-     * @return {number}
-     */
-    _individualRGBValueToFloatValue: function(rgbValue)
-    {
-        if (typeof rgbValue === "number")
-            return this._clamp(rgbValue, 0, 255);
-
-        if (rgbValue.indexOf("%") === -1) {
-            var intValue = parseInt(rgbValue, 10);
-            return this._clamp(intValue, 0, 255);
-        }
-
-        var percentValue = parseFloat(rgbValue);
-        return this._clamp(percentValue, 0, 100) * 2.55;
-    },
-
-    /**
-     * @param {number|string} rgbValue
-     * @return {string}
-     */
-    _individualRGBValueToHexValue: function(rgbValue)
-    {
-        var floatValue = this._individualRGBValueToFloatValue(rgbValue);
-        var hex = Math.round(floatValue).toString(16);
-        if (hex.length === 1)
-            hex = "0" + hex;
-        return hex;
-    },
-
-    /**
-     * @param {Array.<string>} rgb
-     * @return {string}
-     */
-    _rgbStringsToHex: function(rgb)
-    {
-        var r = this._individualRGBValueToHexValue(rgb[0]);
-        var g = this._individualRGBValueToHexValue(rgb[1]);
-        var b = this._individualRGBValueToHexValue(rgb[2]);
-        return (r + g + b).toUpperCase();
-    },
-
-    /**
-     * @param {Array.<number>} rgb
-     * @return {string}
-     */
     _rgbToHex: function(rgb)
     {
-        var r = this._individualRGBValueToHexValue(rgb[0]);
-        var g = this._individualRGBValueToHexValue(rgb[1]);
-        var b = this._individualRGBValueToHexValue(rgb[2]);
+        var r = parseInt(rgb[0]).toString(16);
+        var g = parseInt(rgb[1]).toString(16);
+        var b = parseInt(rgb[2]).toString(16);
+        if (r.length === 1)
+            r = "0" + r;
+        if (g.length === 1)
+            g = "0" + g;
+        if (b.length === 1)
+            b = "0" + b;
+
         return (r + g + b).toUpperCase();
     },
 
-    /**
-     * @param {string} hex
-     * @return {Array.<number>}
-     */
     _hexToRGB: function(hex)
     {
         var r = parseInt(hex.substring(0,2), 16);
@@ -315,15 +188,11 @@ WebInspector.Color.prototype = {
         return [r, g, b];
     },
 
-    /**
-     * @param {Array.<string|number>} rgb
-     * @return {Array.<number>}
-     */
     _rgbToHSL: function(rgb)
     {
-        var r = this._individualRGBValueToFloatValue(rgb[0]) / 255;
-        var g = this._individualRGBValueToFloatValue(rgb[1]) / 255;
-        var b = this._individualRGBValueToFloatValue(rgb[2]) / 255;
+        var r = parseInt(rgb[0]) / 255;
+        var g = parseInt(rgb[1]) / 255;
+        var b = parseInt(rgb[2]) / 255;
         var max = Math.max(r, g, b);
         var min = Math.min(r, g, b);
         var diff = max - min;
@@ -356,18 +225,11 @@ WebInspector.Color.prototype = {
         return [h, s, l];
     },
 
-    /**
-     * @param {Array.<number>} hsl
-     * @return {Array.<number>}
-     */
     _hslToRGB: function(hsl)
     {
         var h = parseFloat(hsl[0]) / 360;
         var s = parseFloat(hsl[1]) / 100;
         var l = parseFloat(hsl[2]) / 100;
-
-        if (s < 0)
-            s = 0;
 
         if (l <= 0.5)
             var q = l * (1 + s);
@@ -402,24 +264,17 @@ WebInspector.Color.prototype = {
         }
     },
 
-    /**
-     * @param {Array.<number>} rgba
-     * @return {Array.<number>}
-     */
-    _rgbaToHSLA: function(rgba, alpha)
+    _rgbaToHSLA: function(rgba)
     {
+        var alpha = rgba[3];
         var hsl = this._rgbToHSL(rgba)
         hsl.push(alpha);
         return hsl;
     },
 
-    /**
-     * @param {Array.<number>} hsla
-     * @param {number} alpha
-     * @return {Array.<number>}
-     */
-    _hslaToRGBA: function(hsla, alpha)
+    _hslaToRGBA: function(hsla)
     {
+        var alpha = hsla[3];
         var rgb = this._hslToRGB(hsla);
         rgb.push(alpha);
         return rgb;
@@ -437,7 +292,7 @@ WebInspector.Color.prototype = {
             this.hsla = set[1];
             this.nickname = set[2];
             this.alpha = set[0][3];
-            return true;
+            return;
         }
 
         // Simple - #hex, rgb(), nickname, hsl()
@@ -459,17 +314,17 @@ WebInspector.Color.prototype = {
                 this.format = "rgb";
                 var rgb = match[2].split(/\s*,\s*/);
                 this.rgb = rgb;
-                this.hex = this._rgbStringsToHex(rgb);
+                this.hex = this._rgbToHex(rgb);
             } else if (match[3]) { // nickname
                 var nickname = match[3].toLowerCase();
                 if (nickname in WebInspector.Color.Nicknames) {
                     this.format = "nickname";
                     this.hex = WebInspector.Color.Nicknames[nickname];
                 } else // unknown name
-                    return false;
+                    throw "unknown color name";
             } else if (match[4]) { // hsl
                 this.format = "hsl";
-                var hsl = match[4].replace(/%/g, "").split(/\s*,\s*/);
+                var hsl = match[4].replace(/%g/, "").split(/\s*,\s*/);
                 this.hsl = hsl;
                 this.rgb = this._hslToRGB(hsl);
                 this.hex = this._rgbToHex(this.rgb);
@@ -484,7 +339,7 @@ WebInspector.Color.prototype = {
                 this.nickname = set[2];
             }
 
-            return true;
+            return;
         }
 
         // Advanced - rgba(), hsla()
@@ -495,20 +350,20 @@ WebInspector.Color.prototype = {
             if (match[1]) { // rgba
                 this.format = "rgba";
                 this.rgba = match[1].split(/\s*,\s*/);
-                this.rgba[3] = this.alpha = this._clamp(this.rgba[3], 0, 1);
-                this.hsla = this._rgbaToHSLA(this.rgba, this.alpha);
+                this.hsla = this._rgbaToHSLA(this.rgba);
+                this.alpha = this.rgba[3];
             } else if (match[2]) { // hsla
                 this.format = "hsla";
                 this.hsla = match[2].replace(/%/g, "").split(/\s*,\s*/);
-                this.hsla[3] = this.alpha = this._clamp(this.hsla[3], 0, 1);
-                this.rgba = this._hslaToRGBA(this.hsla, this.alpha);
+                this.rgba = this._hslaToRGBA(this.hsla);
+                this.alpha = this.hsla[3];
             }
 
-            return true;
+            return;
         }
 
         // Could not parse as a valid color
-        return false;
+        throw "could not parse color";
     }
 }
 
@@ -597,7 +452,7 @@ WebInspector.Color.HexTable = {
     "D8BFD8": [[216, 191, 216], [300, 24, 80], "thistle"],
     "DA70D6": [[218, 112, 214], [302, 59, 65], "orchid"],
     "DAA520": [[218, 165, 32], [43, 74, 49], "goldenrod"],
-    "DC143C": [[237, 20, 61], [35, 83, 58], "crimson"],
+    "DC143C": [[237, 164, 61], [35, 83, 58], "crimson"],
     "DCDCDC": [[220, 220, 220], [0, 0, 86], "gainsboro"],
     "DDA0DD": [[221, 160, 221], [300, 47, 75], "plum"],
     "DEB887": [[222, 184, 135], [34, 57, 70], "burlyWood"],
@@ -740,7 +595,7 @@ WebInspector.Color.Nicknames = {
     "mediumaquamarine": "66CDAA",
     "mediumblue": "0000CD",
     "mediumorchid": "BA55D3",
-    "mediumpurple": "9370DB",
+    "mediumpurple": "9370D8",
     "mediumseagreen": "3CB371",
     "mediumslateblue": "7B68EE",
     "mediumspringgreen": "00FA9A",
@@ -761,7 +616,7 @@ WebInspector.Color.Nicknames = {
     "palegoldenrod": "EEE8AA",
     "palegreen": "98FB98",
     "paleturquoise": "AFEEEE",
-    "palevioletred": "DB7093",
+    "palevioletred": "D87093",
     "papayawhip": "FFEFD5",
     "peachpuff": "FFDAB9",
     "peru": "CD853F",
@@ -804,26 +659,3 @@ WebInspector.Color.AdvancedNickNames = {
     "rgba(0,0,0,0)": [[0, 0, 0, 0], [0, 0, 0, 0], "transparent"],
     "hsla(0,0,0,0)": [[0, 0, 0, 0], [0, 0, 0, 0], "transparent"],
 };
-
-WebInspector.Color.PageHighlight = {
-    Content: WebInspector.Color.fromRGBA(111, 168, 220, .66),
-    ContentLight: WebInspector.Color.fromRGBA(111, 168, 220, .5),
-    ContentOutline: WebInspector.Color.fromRGBA(9, 83, 148),
-    Padding: WebInspector.Color.fromRGBA(147, 196, 125, .55),
-    PaddingLight: WebInspector.Color.fromRGBA(147, 196, 125, .4),
-    Border: WebInspector.Color.fromRGBA(255, 229, 153, .66),
-    BorderLight: WebInspector.Color.fromRGBA(255, 229, 153, .5),
-    Margin: WebInspector.Color.fromRGBA(246, 178, 107, .66),
-    MarginLight: WebInspector.Color.fromRGBA(246, 178, 107, .5)
-}
-
-WebInspector.Color.Format = {
-    Original: "original",
-    Nickname: "nickname",
-    HEX: "hex",
-    ShortHEX: "shorthex",
-    RGB: "rgb",
-    RGBA: "rgba",
-    HSL: "hsl",
-    HSLA: "hsla"
-}

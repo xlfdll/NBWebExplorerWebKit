@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2008 Apple Inc. All Rights Reserved.
- * Copyright (C) 2011 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,15 +23,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/**
- * @constructor
- * @extends {WebInspector.SidebarPane}
- */
 WebInspector.ScopeChainSidebarPane = function()
 {
     WebInspector.SidebarPane.call(this, WebInspector.UIString("Scope Variables"));
-    this._sections = [];
-    this._expandedSections = {};
     this._expandedProperties = [];
 }
 
@@ -40,6 +33,9 @@ WebInspector.ScopeChainSidebarPane.prototype = {
     update: function(callFrame)
     {
         this.bodyElement.removeChildren();
+
+        this.sections = [];
+        this.callFrame = callFrame;
 
         if (!callFrame) {
             var infoElement = document.createElement("div");
@@ -49,87 +45,53 @@ WebInspector.ScopeChainSidebarPane.prototype = {
             return;
         }
 
-        for (var i = 0; i < this._sections.length; ++i) {
-            var section = this._sections[i];
-            if (!section.title)
-                continue;
-            if (section.expanded)
-                this._expandedSections[section.title] = true;
-            else
-                delete this._expandedSections[section.title];
-        }
-
-        this._sections = [];
-
         var foundLocalScope = false;
         var scopeChain = callFrame.scopeChain;
         for (var i = 0; i < scopeChain.length; ++i) {
-            var scope = scopeChain[i];
+            var scopeObjectProxy = scopeChain[i];
             var title = null;
-            var subtitle = scope.object.description;
+            var subtitle = scopeObjectProxy.description;
             var emptyPlaceholder = null;
             var extraProperties = null;
 
-            switch (scope.type) {
-                case "local":
-                    foundLocalScope = true;
-                    title = WebInspector.UIString("Local");
-                    emptyPlaceholder = WebInspector.UIString("No Variables");
-                    subtitle = null;
-                    if (callFrame.this)
-                        extraProperties = [ new WebInspector.RemoteObjectProperty("this", WebInspector.RemoteObject.fromPayload(callFrame.this)) ];
-                    if (i == 0) {
-                        var details = WebInspector.debuggerModel.debuggerPausedDetails();
-                        var exception = details.reason === WebInspector.DebuggerModel.BreakReason.Exception ? details.auxData : 0;
-                        if (exception) {
-                            extraProperties = extraProperties || [];
-                            var exceptionObject = /** @type {RuntimeAgent.RemoteObject} */ (exception);
-                            extraProperties.push(new WebInspector.RemoteObjectProperty("<exception>", WebInspector.RemoteObject.fromPayload(exceptionObject)));
-                        }
-                    }
-                    break;
-                case "closure":
-                    title = WebInspector.UIString("Closure");
-                    emptyPlaceholder = WebInspector.UIString("No Variables");
-                    subtitle = null;
-                    break;
-                case "catch":
-                    title = WebInspector.UIString("Catch");
-                    subtitle = null;
-                    break;
-                case "with":
-                    title = WebInspector.UIString("With Block");
-                    break;
-                case "global":
-                    title = WebInspector.UIString("Global");
-                    break;
-            }
+            if (scopeObjectProxy.isLocal) {
+                foundLocalScope = true;
+                title = WebInspector.UIString("Local");
+                emptyPlaceholder = WebInspector.UIString("No Variables");
+                subtitle = null;
+                if (scopeObjectProxy.thisObject)
+                    extraProperties = [ new WebInspector.ObjectPropertyProxy("this", scopeObjectProxy.thisObject) ];
+            } else if (scopeObjectProxy.isClosure) {
+                title = WebInspector.UIString("Closure");
+                emptyPlaceholder = WebInspector.UIString("No Variables");
+                subtitle = null;
+            } else if (i === (scopeChain.length - 1))
+                title = WebInspector.UIString("Global");
+            else if (scopeObjectProxy.isElement)
+                title = WebInspector.UIString("Event Target");
+            else if (scopeObjectProxy.isDocument)
+                title = WebInspector.UIString("Event Document");
+            else if (scopeObjectProxy.isWithBlock)
+                title = WebInspector.UIString("With Block");
 
             if (!title || title === subtitle)
                 subtitle = null;
 
-            var section = new WebInspector.ObjectPropertiesSection(WebInspector.RemoteObject.fromPayload(scope.object), title, subtitle, emptyPlaceholder, true, extraProperties, WebInspector.ScopeVariableTreeElement);
+            var section = new WebInspector.ObjectPropertiesSection(scopeObjectProxy, title, subtitle, emptyPlaceholder, true, extraProperties, WebInspector.ScopeVariableTreeElement);
             section.editInSelectedCallFrameWhenPaused = true;
             section.pane = this;
 
-            if (scope.type === "global")
-                section.expanded = false;
-            else if (!foundLocalScope || scope.type === "local" || title in this._expandedSections)
+            if (!foundLocalScope || scopeObjectProxy.isLocal)
                 section.expanded = true;
 
-            this._sections.push(section);
+            this.sections.push(section);
             this.bodyElement.appendChild(section.element);
         }
-    },
-
-    __proto__: WebInspector.SidebarPane.prototype
+    }
 }
 
-/**
- * @constructor
- * @extends {WebInspector.ObjectPropertyTreeElement}
- * @param {WebInspector.RemoteObjectProperty} property
- */
+WebInspector.ScopeChainSidebarPane.prototype.__proto__ = WebInspector.SidebarPane.prototype;
+
 WebInspector.ScopeVariableTreeElement = function(property)
 {
     WebInspector.ObjectPropertyTreeElement.call(this, property);
@@ -158,9 +120,29 @@ WebInspector.ScopeVariableTreeElement.prototype = {
         if ("_propertyIdentifier" in this)
             return this._propertyIdentifier;
         var section = this.treeOutline.section;
-        this._propertyIdentifier = section.title + ":" + (section.subtitle ? section.subtitle + ":" : "") + this.propertyPath();
+        this._propertyIdentifier = section.title + ":" + (section.subtitle ? section.subtitle + ":" : "") + this.propertyPath;
         return this._propertyIdentifier;
     },
 
-    __proto__: WebInspector.ObjectPropertyTreeElement.prototype
+    get propertyPath()
+    {
+        if ("_propertyPath" in this)
+            return this._propertyPath;
+
+        var current = this;
+        var result;
+
+        do {
+            if (result)
+                result = current.property.name + "." + result;
+            else
+                result = current.property.name;
+            current = current.parent;
+        } while (current && !current.root);
+
+        this._propertyPath = result;
+        return result;
+    }
 }
+
+WebInspector.ScopeVariableTreeElement.prototype.__proto__ = WebInspector.ObjectPropertyTreeElement.prototype;

@@ -26,10 +26,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/**
- * @extends {WebInspector.ResourceView}
- * @constructor
- */
 WebInspector.FontView = function(resource)
 {
     WebInspector.ResourceView.call(this, resource);
@@ -37,105 +33,75 @@ WebInspector.FontView = function(resource)
     this.element.addStyleClass("font");
 }
 
-WebInspector.FontView._fontPreviewLines = [ "ABCDEFGHIJKLM", "NOPQRSTUVWXYZ", "abcdefghijklm", "nopqrstuvwxyz", "1234567890" ];
-
-WebInspector.FontView._fontId = 0;
-
-WebInspector.FontView._measureFontSize = 50;
-
 WebInspector.FontView.prototype = {
-    hasContent: function()
+    hasContentTab: function()
     {
         return true;
     },
 
-    _createContentIfNeeded: function()
+    contentTabSelected: function()
     {
         if (this.fontPreviewElement)
             return;
 
-        var uniqueFontName = "WebInspectorFontPreview" + (++WebInspector.FontView._fontId);
+        var uniqueFontName = "WebInspectorFontPreview" + this.resource.identifier;
 
         this.fontStyleElement = document.createElement("style");
         this.fontStyleElement.textContent = "@font-face { font-family: \"" + uniqueFontName + "\"; src: url(" + this.resource.url + "); }";
         document.head.appendChild(this.fontStyleElement);
 
-        var fontPreview = document.createElement("div");
-        for (var i = 0; i < WebInspector.FontView._fontPreviewLines.length; ++i) {
-            if (i > 0)
-                fontPreview.appendChild(document.createElement("br"));
-            fontPreview.appendChild(document.createTextNode(WebInspector.FontView._fontPreviewLines[i]));
-        }
-        this.fontPreviewElement = fontPreview.cloneNode(true);
-        this.fontPreviewElement.style.setProperty("font-family", uniqueFontName);
-        this.fontPreviewElement.style.setProperty("visibility", "hidden");
+        this.fontPreviewElement = document.createElement("div");
+        this.contentElement.appendChild(this.fontPreviewElement);
 
-        this._dummyElement = fontPreview;
-        this._dummyElement.style.visibility = "hidden";
-        this._dummyElement.style.zIndex = "-1";
-        this._dummyElement.style.display = "inline";
-        this._dummyElement.style.position = "absolute";
-        this._dummyElement.style.setProperty("font-family", uniqueFontName);
-        this._dummyElement.style.setProperty("font-size", WebInspector.FontView._measureFontSize + "px");
-
-        this.element.appendChild(this.fontPreviewElement);
-    },
-
-    wasShown: function()
-    {
-        this._createContentIfNeeded();
+        this.fontPreviewElement.style.setProperty("font-family", uniqueFontName, null);
+        this.fontPreviewElement.innerHTML = "ABCDEFGHIJKLM<br>NOPQRSTUVWXYZ<br>abcdefghijklm<br>nopqrstuvwxyz<br>1234567890";
+        this._lineCount = this.fontPreviewElement.getElementsByTagName("br").length + 1;
 
         this.updateFontPreviewSize();
     },
 
-    onResize: function()
+    show: function(parentElement)
     {
-        if (this._inResize)
-            return;
-
-        this._inResize = true;
-        try {
-            this.updateFontPreviewSize();
-        } finally {
-            delete this._inResize;
-        }
+        WebInspector.ResourceView.prototype.show.call(this, parentElement);
+        this.updateFontPreviewSize();
     },
 
-    _measureElement: function()
+    resize: function()
     {
-        this.element.appendChild(this._dummyElement);
-        var result = { width: this._dummyElement.offsetWidth, height: this._dummyElement.offsetHeight };
-        this.element.removeChild(this._dummyElement);
-
-        return result;
+        this.updateFontPreviewSize();
     },
 
     updateFontPreviewSize: function()
     {
-        if (!this.fontPreviewElement || !this.isShowing())
+        if (!this.fontPreviewElement || !this.visible)
             return;
 
-        this.fontPreviewElement.style.removeProperty("visibility");
-        var dimension = this._measureElement();
+        const measureFontSize = 50;
+        this.fontPreviewElement.style.setProperty("font-size", measureFontSize + "px", null);
+        this.fontPreviewElement.style.setProperty("position", "absolute", null);
+        this.fontPreviewElement.style.removeProperty("height");
 
-        const height = dimension.height;
-        const width = dimension.width;
+        const height = this.fontPreviewElement.offsetHeight;
+        const width = this.fontPreviewElement.offsetWidth;
 
-        // Subtract some padding. This should match the paddings in the CSS plus room for the scrollbar.
-        const containerWidth = this.element.offsetWidth - 50;
-        const containerHeight = this.element.offsetHeight - 30;
+        // Subtract some padding. This should match the padding in the CSS plus room for the scrollbar.
+        const containerWidth = this.contentElement.offsetWidth - 50;
 
-        if (!height || !width || !containerWidth || !containerHeight) {
+        if (!height || !width || !containerWidth) {
             this.fontPreviewElement.style.removeProperty("font-size");
+            this.fontPreviewElement.style.removeProperty("position");
             return;
         }
 
+        var realLineHeight = Math.floor(height / this._lineCount);
+        var fontSizeLineRatio = measureFontSize / realLineHeight;
         var widthRatio = containerWidth / width;
-        var heightRatio = containerHeight / height;
-        var finalFontSize = Math.floor(WebInspector.FontView._measureFontSize * Math.min(widthRatio, heightRatio)) - 2;
+        var finalFontSize = Math.floor(realLineHeight * widthRatio * fontSizeLineRatio) - 2;
 
         this.fontPreviewElement.style.setProperty("font-size", finalFontSize + "px", null);
-    },
-
-    __proto__: WebInspector.ResourceView.prototype
+        this.fontPreviewElement.style.setProperty("height", this.fontPreviewElement.offsetHeight + "px", null);
+        this.fontPreviewElement.style.removeProperty("position");
+    }
 }
+
+WebInspector.FontView.prototype.__proto__ = WebInspector.ResourceView.prototype;

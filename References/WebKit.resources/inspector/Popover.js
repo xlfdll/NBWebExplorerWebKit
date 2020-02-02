@@ -28,117 +28,52 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/**
- * @constructor
- * @extends {WebInspector.View}
- * @param {WebInspector.PopoverHelper=} popoverHelper
- */
-WebInspector.Popover = function(popoverHelper)
+WebInspector.Popover = function(contentElement)
 {
-    WebInspector.View.call(this);
-    this.markAsRoot();
-    this.element.className = "popover custom-popup-vertical-scroll custom-popup-horizontal-scroll";
+    this.element = document.createElement("div");
+    this.element.className = "popover";
 
     this._popupArrowElement = document.createElement("div");
     this._popupArrowElement.className = "arrow";
     this.element.appendChild(this._popupArrowElement);
 
+    this.contentElement = contentElement;
     this._contentDiv = document.createElement("div");
     this._contentDiv.className = "content";
-    this.element.appendChild(this._contentDiv);
-
-    this._popoverHelper = popoverHelper;
 }
 
 WebInspector.Popover.prototype = {
-    /**
-     * @param {Element} element
-     * @param {Element} anchor
-     * @param {number=} preferredWidth
-     * @param {number=} preferredHeight
-     */
-    show: function(element, anchor, preferredWidth, preferredHeight)
+    show: function(anchor, preferredWidth, preferredHeight)
     {
-        this._innerShow(null, element, anchor, preferredWidth, preferredHeight);
-    },
-
-    /**
-     * @param {WebInspector.View} view
-     * @param {Element} anchor
-     * @param {number=} preferredWidth
-     * @param {number=} preferredHeight
-     */
-    showView: function(view, anchor, preferredWidth, preferredHeight)
-    {
-        this._innerShow(view, view.element, anchor, preferredWidth, preferredHeight);
-    },
-
-    /**
-     * @param {WebInspector.View?} view
-     * @param {Element} contentElement
-     * @param {Element} anchor
-     * @param {number=} preferredWidth
-     * @param {number=} preferredHeight
-     */
-    _innerShow: function(view, contentElement, anchor, preferredWidth, preferredHeight)
-    {
-        if (this._disposed)
-            return;
-        this.contentElement = contentElement;
-
         // This should not happen, but we hide previous popup to be on the safe side.
-        if (WebInspector.Popover._popover)
-            WebInspector.Popover._popover.detach();
-        WebInspector.Popover._popover = this;
+        if (WebInspector.Popover._popoverElement)
+            document.body.removeChild(WebInspector.Popover._popoverElement);
+        WebInspector.Popover._popoverElement = this.element;
 
         // Temporarily attach in order to measure preferred dimensions.
-        var preferredSize = view ? view.measurePreferredSize() : this.contentElement.measurePreferredSize();
-        preferredWidth = preferredWidth || preferredSize.width;
-        preferredHeight = preferredHeight || preferredSize.height;
+        this.contentElement.positionAt(0, 0);
+        document.body.appendChild(this.contentElement);
+        var preferredWidth = preferredWidth || this.contentElement.offsetWidth;
+        var preferredHeight = preferredHeight || this.contentElement.offsetHeight;
 
-        WebInspector.View.prototype.show.call(this, document.body);
-
-        if (view)
-            view.show(this._contentDiv);
-        else
-            this._contentDiv.appendChild(this.contentElement);
-
+        this._contentDiv.appendChild(this.contentElement);
+        this.element.appendChild(this._contentDiv);
+        document.body.appendChild(this.element);
         this._positionElement(anchor, preferredWidth, preferredHeight);
-
-        if (this._popoverHelper) {
-            contentElement.addEventListener("mousemove", this._popoverHelper._killHidePopoverTimer.bind(this._popoverHelper), true);
-            this.element.addEventListener("mouseout", this._popoverHelper._popoverMouseOut.bind(this._popoverHelper), true);
-        }
     },
 
     hide: function()
     {
-        this.detach();
-        delete WebInspector.Popover._popover;
-    },
-
-    get disposed()
-    {
-        return this._disposed;
-    },
-
-    dispose: function()
-    {
-        if (this.isShowing())
-            this.hide();
-        this._disposed = true;
-    },
-
-    setCanShrink: function(canShrink)
-    {
-        this._hasFixedHeight = !canShrink;
-        this._contentDiv.addStyleClass("fixed-height");
+        if (WebInspector.Popover._popoverElement) {
+            delete WebInspector.Popover._popoverElement;
+            document.body.removeChild(this.element);
+        }
     },
 
     _positionElement: function(anchorElement, preferredWidth, preferredHeight)
     {
         const borderWidth = 25;
-        const scrollerWidth = this._hasFixedHeight ? 0 : 11;
+        const scrollerWidth = 11;
         const arrowHeight = 15;
         const arrowOffset = 10;
         const borderRadius = 10;
@@ -148,7 +83,15 @@ WebInspector.Popover.prototype = {
         const totalWidth = window.innerWidth;
         const totalHeight = window.innerHeight;
 
-        var anchorBox = anchorElement.boxInWindow(window);
+        var anchorBox = {x: anchorElement.totalOffsetLeft, y: anchorElement.totalOffsetTop, width: anchorElement.offsetWidth, height: anchorElement.offsetHeight};
+        while (anchorElement !== document.body) {
+            if (anchorElement.scrollLeft)
+                anchorBox.x -= anchorElement.scrollLeft;
+            if (anchorElement.scrollTop)
+                anchorBox.y -= anchorElement.scrollTop;
+            anchorElement = anchorElement.parentElement;
+        }
+
         var newElementPosition = { x: 0, y: 0, width: preferredWidth + scrollerWidth, height: preferredHeight };
 
         var verticalAlignment;
@@ -160,24 +103,15 @@ WebInspector.Popover.prototype = {
             if (anchorBox.y > newElementPosition.height + arrowHeight + borderRadius)
                 newElementPosition.y = anchorBox.y - newElementPosition.height - arrowHeight;
             else {
-                newElementPosition.y = borderRadius;
+                newElementPosition.y = borderRadius * 2;
                 newElementPosition.height = anchorBox.y - borderRadius * 2 - arrowHeight;
-                if (this._hasFixedHeight && newElementPosition.height < preferredHeight) {
-                    newElementPosition.y = borderRadius;
-                    newElementPosition.height = preferredHeight;
-                }
             }
             verticalAlignment = "bottom";
         } else {
             // Positioning below the anchor.
             newElementPosition.y = anchorBox.y + anchorBox.height + arrowHeight;
-            if (newElementPosition.y + newElementPosition.height + arrowHeight - borderWidth >= totalHeight) {
+            if (newElementPosition.y + newElementPosition.height + arrowHeight - borderWidth >= totalHeight)
                 newElementPosition.height = totalHeight - anchorBox.y - anchorBox.height - borderRadius * 2 - arrowHeight;
-                if (this._hasFixedHeight && newElementPosition.height < preferredHeight) {
-                    newElementPosition.y = totalHeight - preferredHeight - borderRadius;
-                    newElementPosition.height = preferredHeight;
-                }
-            }
             // Align arrow.
             verticalAlignment = "top";
         }
@@ -192,7 +126,6 @@ WebInspector.Popover.prototype = {
             // Position arrow accurately.
             var arrowRightPosition = Math.max(0, totalWidth - anchorBox.x - anchorBox.width - borderRadius - arrowOffset);
             arrowRightPosition += anchorBox.width / 2;
-            arrowRightPosition = Math.min(arrowRightPosition, newElementPosition.width - borderRadius - arrowOffset);
             this._popupArrowElement.style.right = arrowRightPosition + "px";
         } else {
             newElementPosition.x = borderRadius;
@@ -206,101 +139,60 @@ WebInspector.Popover.prototype = {
             this._popupArrowElement.style.left += anchorBox.width / 2;
         }
 
-        this.element.className = "popover custom-popup-vertical-scroll custom-popup-horizontal-scroll " + verticalAlignment + "-" + horizontalAlignment + "-arrow";
+        this.element.className = "popover " + verticalAlignment + "-" + horizontalAlignment + "-arrow";
         this.element.positionAt(newElementPosition.x - borderWidth, newElementPosition.y - borderWidth);
         this.element.style.width = newElementPosition.width + borderWidth * 2 + "px";
         this.element.style.height = newElementPosition.height + borderWidth * 2 + "px";
-    },
-
-    __proto__: WebInspector.View.prototype
+    }
 }
 
-/**
- * @constructor
- * @param {Element} panelElement
- * @param {function(Element, Event):Element|undefined} getAnchor
- * @param {function(Element, WebInspector.Popover):undefined} showPopover
- * @param {function()=} onHide
- * @param {boolean=} disableOnClick
- */
-WebInspector.PopoverHelper = function(panelElement, getAnchor, showPopover, onHide, disableOnClick)
+WebInspector.PopoverHelper = function(panelElement, getAnchor, showPopup, showOnClick, onHide)
 {
     this._panelElement = panelElement;
     this._getAnchor = getAnchor;
-    this._showPopover = showPopover;
+    this._showPopup = showPopup;
+    this._showOnClick = showOnClick;
     this._onHide = onHide;
-    this._disableOnClick = !!disableOnClick;
     panelElement.addEventListener("mousedown", this._mouseDown.bind(this), false);
     panelElement.addEventListener("mousemove", this._mouseMove.bind(this), false);
-    panelElement.addEventListener("mouseout", this._mouseOut.bind(this), false);
-    this.setTimeout(1000);
 }
 
 WebInspector.PopoverHelper.prototype = {
-    setTimeout: function(timeout)
-    {
-        this._timeout = timeout;
-    },
-
     _mouseDown: function(event)
     {
-        if (this._disableOnClick || !event.target.isSelfOrDescendant(this._hoverElement))
-            this.hidePopover();
-        else {
-            this._killHidePopoverTimer();
-            this._handleMouseAction(event, true);
-        }
+        this._killHidePopupTimer();
+        this._handleMouseAction(event, true);
     },
 
     _mouseMove: function(event)
     {
         // Pretend that nothing has happened.
-        if (event.target.isSelfOrDescendant(this._hoverElement))
+        if (this._hoverElement === event.target || (this._hoverElement && this._hoverElement.isAncestor(event.target)))
             return;
 
-        this._startHidePopoverTimer();
-        this._handleMouseAction(event, false);
-    },
-
-    _popoverMouseOut: function(event)
-    {
-        if (!this.isPopoverVisible())
-            return;
-        if (event.relatedTarget && !event.relatedTarget.isSelfOrDescendant(this._popover._contentDiv))
-            this._startHidePopoverTimer();
-    },
-
-    _mouseOut: function(event)
-    {
-        if (!this.isPopoverVisible())
-            return;
-        if (event.relatedTarget && !event.relatedTarget.isSelfOrDescendant(this._hoverElement))
-            this._startHidePopoverTimer();
-    },
-
-    _startHidePopoverTimer: function()
-    {
-        // User has 500ms (this._timeout / 2) to reach the popup.
-        if (!this._popover || this._hidePopoverTimer)
-            return;
-
-        function doHide()
-        {
-            this._hidePopover();
-            delete this._hidePopoverTimer;
+        // User has 500ms to reach the popup.
+        if (this._popup && !this._hidePopupTimer) {
+            var self = this;
+            function doHide()
+            {
+                self._hidePopup();
+                delete self._hidePopupTimer;
+            }
+            this._hidePopupTimer = setTimeout(doHide, 500);
         }
-        this._hidePopoverTimer = setTimeout(doHide.bind(this), this._timeout / 2);
+
+        this._handleMouseAction(event);
     },
 
     _handleMouseAction: function(event, isMouseDown)
     {
         this._resetHoverTimer();
-        if (event.which && this._disableOnClick)
-            return;
-        this._hoverElement = this._getAnchor(event.target, event);
+
+        this._hoverElement = this._getAnchor(event.target);
         if (!this._hoverElement)
             return;
-        const toolTipDelay = isMouseDown ? 0 : (this._popup ? this._timeout * 0.6 : this._timeout);
+
+        const toolTipDelay = isMouseDown ? 0 : (this._popup ? 600 : 1000);
         this._hoverTimer = setTimeout(this._mouseHover.bind(this, this._hoverElement), toolTipDelay);
     },
 
@@ -312,44 +204,38 @@ WebInspector.PopoverHelper.prototype = {
         }
     },
 
-    isPopoverVisible: function()
-    {
-        return !!this._popover;
-    },
-
-    hidePopover: function()
+    hidePopup: function()
     {
         this._resetHoverTimer();
-        this._hidePopover();
+        this._hidePopup();
     },
 
-    _hidePopover: function()
+    _hidePopup: function()
     {
-        if (!this._popover)
+        if (!this._popup)
             return;
 
         if (this._onHide)
             this._onHide();
 
-        this._popover.dispose();
-        delete this._popover;
-        this._hoverElement = null;
+        this._popup.hide();
+        delete this._popup;
     },
 
     _mouseHover: function(element)
     {
         delete this._hoverTimer;
 
-        this._hidePopover();
-        this._popover = new WebInspector.Popover(this);
-        this._showPopover(element, this._popover);
+        this._popup = this._showPopup(element);
+        if (this._popup)
+            this._popup.contentElement.addEventListener("mousemove", this._killHidePopupTimer.bind(this), true);
     },
 
-    _killHidePopoverTimer: function()
+    _killHidePopupTimer: function()
     {
-        if (this._hidePopoverTimer) {
-            clearTimeout(this._hidePopoverTimer);
-            delete this._hidePopoverTimer;
+        if (this._hidePopupTimer) {
+            clearTimeout(this._hidePopupTimer);
+            delete this._hidePopupTimer;
 
             // We know that we reached the popup, but we might have moved over other elements.
             // Discard pending command.

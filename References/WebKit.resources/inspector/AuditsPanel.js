@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Google Inc. All rights reserved.
+ * Copyright (C) 2009 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -28,22 +28,19 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/**
- * @constructor
- * @extends {WebInspector.Panel}
- */
 WebInspector.AuditsPanel = function()
 {
     WebInspector.Panel.call(this, "audits");
-    this.registerRequiredCSS("panelEnablerView.css");
-    this.registerRequiredCSS("auditsPanel.css");
 
-    this.createSidebarViewWithTree();
+    this._constructCategories();
+
+    this.createSidebar();
     this.auditsTreeElement = new WebInspector.SidebarSectionTreeElement("", {}, true);
     this.sidebarTree.appendChild(this.auditsTreeElement);
     this.auditsTreeElement.listItemElement.addStyleClass("hidden");
+    this.auditsTreeElement.expand();
 
-    this.auditsItemTreeElement = new WebInspector.AuditsSidebarTreeElement(this);
+    this.auditsItemTreeElement = new WebInspector.AuditsSidebarTreeElement();
     this.auditsTreeElement.appendChild(this.auditsItemTreeElement);
 
     this.auditResultsTreeElement = new WebInspector.SidebarSectionTreeElement(WebInspector.UIString("RESULTS"), {}, true);
@@ -51,49 +48,60 @@ WebInspector.AuditsPanel = function()
     this.auditResultsTreeElement.expand();
 
     this.clearResultsButton = new WebInspector.StatusBarButton(WebInspector.UIString("Clear audit results."), "clear-status-bar-item");
-    this.clearResultsButton.addEventListener("click", this._clearButtonClicked, this);
+    this.clearResultsButton.addEventListener("click", this._clearButtonClicked.bind(this), false);
 
-    this.viewsContainerElement = this.splitView.mainElement;
+    this.viewsContainerElement = document.createElement("div");
+    this.viewsContainerElement.id = "audit-views";
+    this.element.appendChild(this.viewsContainerElement);
 
-    this._constructCategories();
-
-    this._launcherView = new WebInspector.AuditLauncherView(this.initiateAudit.bind(this));
-    for (var id in this.categoriesById)
-        this._launcherView.addCategory(this.categoriesById[id]);
-
-    WebInspector.resourceTreeModel.addEventListener(WebInspector.ResourceTreeModel.EventTypes.OnLoad, this._didMainResourceLoad, this);
+    this._launcherView = new WebInspector.AuditLauncherView(this.categoriesById, this.initiateAudit.bind(this));
 }
 
 WebInspector.AuditsPanel.prototype = {
+    get toolbarItemLabel()
+    {
+        return WebInspector.UIString("Audits");
+    },
+
     get statusBarItems()
     {
         return [this.clearResultsButton.element];
     },
 
-    /**
-     * @return {!Object.<string, !WebInspector.AuditCategory>}
-     */
+    get mainResourceLoadTime()
+    {
+        return this._mainResourceLoadTime;
+    },
+
+    set mainResourceLoadTime(x)
+    {
+        this._mainResourceLoadTime = x;
+        this._didMainResourceLoad();
+    },
+
+    get mainResourceDOMContentTime()
+    {
+        return this._mainResourceDOMContentTime;
+    },
+
+    set mainResourceDOMContentTime(x)
+    {
+        this._mainResourceDOMContentTime = x;
+    },
+
     get categoriesById()
     {
         return this._auditCategoriesById;
     },
 
-    /**
-     * @param {!WebInspector.AuditCategory} category
-     */
-    addCategory: function(category)
+    resourceStarted: function(resource)
     {
-        this.categoriesById[category.id] = category;
-        this._launcherView.addCategory(category);
+        this._launcherView.resourceStarted(resource);
     },
 
-    /**
-     * @param {string} id
-     * @return {WebInspector.AuditCategory}
-     */
-    getCategory: function(id)
+    resourceFinished: function(resource)
     {
-        return this.categoriesById[id];
+        this._launcherView.resourceFinished(resource);
     },
 
     _constructCategories: function()
@@ -106,52 +114,43 @@ WebInspector.AuditsPanel.prototype = {
         }
     },
 
-    /**
-     * @param {!Array.<!WebInspector.AuditCategory>} categories
-     * @param {function(string, !Array.<!WebInspector.AuditCategoryResult>)} resultCallback
-     */
     _executeAudit: function(categories, resultCallback)
     {
-        this._progress.setTitle(WebInspector.UIString("Running audit"));
+        var resources = [];
+        for (var id in WebInspector.resources)
+            resources.push(WebInspector.resources[id]);
+
+        var rulesRemaining = 0;
+        for (var i = 0; i < categories.length; ++i)
+            rulesRemaining += categories[i].ruleCount;
+
+        var results = [];
+        var mainResourceURL = WebInspector.mainResource.url;
 
         function ruleResultReadyCallback(categoryResult, ruleResult)
         {
             if (ruleResult && ruleResult.children)
                 categoryResult.addRuleResult(ruleResult);
 
-            if (this._progress.isCanceled())
-                this._progress.done();
+            --rulesRemaining;
+
+            if (!rulesRemaining && resultCallback)
+                resultCallback(mainResourceURL, results);
         }
 
-        var results = [];
-        var mainResourceURL = WebInspector.inspectedPageURL;
-        var categoriesDone = 0;
-        function categoryDoneCallback()
-        {
-            if (++categoriesDone !== categories.length)
-                return;
-            this._progress.done();
-            resultCallback(mainResourceURL, results)
+        if (!rulesRemaining) {
+            resultCallback(mainResourceURL, results);
+            return;
         }
 
-        var requests = WebInspector.networkLog.requests.slice();
-        var compositeProgress = new WebInspector.CompositeProgress(this._progress);
-        var subprogresses = [];
-        for (var i = 0; i < categories.length; ++i)
-            subprogresses.push(compositeProgress.createSubProgress());
         for (var i = 0; i < categories.length; ++i) {
             var category = categories[i];
             var result = new WebInspector.AuditCategoryResult(category);
             results.push(result);
-            category.run(requests, ruleResultReadyCallback.bind(this, result), categoryDoneCallback.bind(this), subprogresses[i]);
+            category.runRules(resources, ruleResultReadyCallback.bind(null, result));
         }
     },
 
-    /**
-     * @param {function()} launcherCallback
-     * @param {string} mainResourceURL
-     * @param {!Array.<!WebInspector.AuditCategoryResult>} results
-     */
     _auditFinishedCallback: function(launcherCallback, mainResourceURL, results)
     {
         var children = this.auditResultsTreeElement.children;
@@ -161,63 +160,54 @@ WebInspector.AuditsPanel.prototype = {
                 ordinal++;
         }
 
-        var resultTreeElement = new WebInspector.AuditResultSidebarTreeElement(this, results, mainResourceURL, ordinal);
+        var resultTreeElement = new WebInspector.AuditResultSidebarTreeElement(results, mainResourceURL, ordinal);
         this.auditResultsTreeElement.appendChild(resultTreeElement);
-        resultTreeElement.revealAndSelect();
-        if (!this._progress.isCanceled())
+        resultTreeElement.reveal();
+        resultTreeElement.select();
+        if (launcherCallback)
             launcherCallback();
     },
 
-    /**
-     * @param {Array.<string>} categoryIds
-     * @param {WebInspector.Progress} progress
-     * @param {boolean} runImmediately
-     * @param {function()} startedCallback
-     * @param {function()} finishedCallback
-     */
-    initiateAudit: function(categoryIds, progress, runImmediately, startedCallback, finishedCallback)
+    initiateAudit: function(categoryIds, runImmediately, launcherCallback)
     {
         if (!categoryIds || !categoryIds.length)
             return;
-
-        this._progress = progress;
 
         var categories = [];
         for (var i = 0; i < categoryIds.length; ++i)
             categories.push(this.categoriesById[categoryIds[i]]);
 
-        function startAuditWhenResourcesReady()
+        function initiateAuditCallback(categories, launcherCallback)
         {
-            startedCallback();
-            this._executeAudit(categories, this._auditFinishedCallback.bind(this, finishedCallback));
+            this._executeAudit(categories, this._auditFinishedCallback.bind(this, launcherCallback));
         }
 
         if (runImmediately)
-            startAuditWhenResourcesReady.call(this);
+            initiateAuditCallback.call(this, categories, launcherCallback);
         else
-            this._reloadResources(startAuditWhenResourcesReady.bind(this));
-
-        WebInspector.userMetrics.AuditsStarted.record();
+            this._reloadResources(initiateAuditCallback.bind(this, categories, launcherCallback));
     },
 
     _reloadResources: function(callback)
     {
-        this._pageReloadCallback = callback;
-        PageAgent.reload(false);
+        this._resourceTrackingCallback = callback;
+
+        if (!WebInspector.panels.resources.resourceTrackingEnabled) {
+            InspectorBackend.enableResourceTracking(false);
+            this._updateLauncherViewControls(true);
+        } else
+            InspectorBackend.reloadPage();
     },
 
     _didMainResourceLoad: function()
     {
-        if (this._pageReloadCallback) {
-            var callback = this._pageReloadCallback;
-            delete this._pageReloadCallback;
+        if (this._resourceTrackingCallback) {
+            var callback = this._resourceTrackingCallback;
+            delete this._resourceTrackingCallback;
             callback();
         }
     },
 
-    /**
-     * @param {!Array.<!WebInspector.AuditCategoryResult>} categoryResults
-     */
     showResults: function(categoryResults)
     {
         if (!categoryResults._resultView)
@@ -230,7 +220,7 @@ WebInspector.AuditsPanel.prototype = {
     {
         this.visibleView = this._launcherView;
     },
-
+    
     get visibleView()
     {
         return this._visibleView;
@@ -242,7 +232,7 @@ WebInspector.AuditsPanel.prototype = {
             return;
 
         if (this._visibleView)
-            this._visibleView.detach();
+            this._visibleView.hide();
 
         this._visibleView = x;
 
@@ -250,26 +240,47 @@ WebInspector.AuditsPanel.prototype = {
             x.show(this.viewsContainerElement);
     },
 
-    wasShown: function()
+    show: function()
     {
-        WebInspector.Panel.prototype.wasShown.call(this);
-        if (!this._visibleView)
-            this.auditsItemTreeElement.select();
+        WebInspector.Panel.prototype.show.call(this);
+        this._updateLauncherViewControls(WebInspector.panels.resources.resourceTrackingEnabled);
+    },
+
+    reset: function()
+    {
+        this._launcherView.reset();
+    },
+
+    attach: function()
+    {
+        WebInspector.Panel.prototype.attach.call(this);
+
+        this.auditsItemTreeElement.select();
+    },
+
+    updateMainViewWidth: function(width)
+    {
+        this.viewsContainerElement.style.left = width + "px";
+    },
+
+    _updateLauncherViewControls: function(isTracking)
+    {
+        if (this._launcherView)
+            this._launcherView.updateResourceTrackingState(isTracking);
     },
 
     _clearButtonClicked: function()
     {
-        this.auditsItemTreeElement.revealAndSelect();
+        this.auditsItemTreeElement.reveal();
+        this.auditsItemTreeElement.select();
         this.auditResultsTreeElement.removeChildren();
-    },
-
-    __proto__: WebInspector.Panel.prototype
+    }
 }
 
-/**
- * @constructor
- * @param {string} displayName
- */
+WebInspector.AuditsPanel.prototype.__proto__ = WebInspector.Panel.prototype;
+
+
+
 WebInspector.AuditCategory = function(displayName)
 {
     this._displayName = displayName;
@@ -277,53 +288,34 @@ WebInspector.AuditCategory = function(displayName)
 }
 
 WebInspector.AuditCategory.prototype = {
-    /**
-     * @return {string}
-     */
     get id()
     {
         // this._id value is injected at construction time.
         return this._id;
     },
 
-    /**
-     * @return {string}
-     */
     get displayName()
     {
         return this._displayName;
     },
 
-    /**
-     * @param {!WebInspector.AuditRule} rule
-     * @param {!WebInspector.AuditRule.Severity} severity
-     */
+    get ruleCount()
+    {
+        this._ensureInitialized();
+        return this._rules.length;
+    },
+
     addRule: function(rule, severity)
     {
         rule.severity = severity;
         this._rules.push(rule);
     },
 
-    /**
-     * @param {!Array.<!WebInspector.NetworkRequest>} requests
-     * @param {function(WebInspector.AuditRuleResult)} ruleResultCallback
-     * @param {function()} categoryDoneCallback
-     * @param {!WebInspector.Progress} progress
-     */
-    run: function(requests, ruleResultCallback, categoryDoneCallback, progress)
+    runRules: function(resources, callback)
     {
         this._ensureInitialized();
-        var remainingRulesCount = this._rules.length;
-        progress.setTotalWork(remainingRulesCount);
-        function callbackWrapper(result)
-        {
-            ruleResultCallback(result);
-            progress.worked();
-            if (!--remainingRulesCount)
-                categoryDoneCallback();
-        }
         for (var i = 0; i < this._rules.length; ++i)
-            this._rules[i].run(requests, callbackWrapper, progress);
+            this._rules[i].run(resources, callback);
     },
 
     _ensureInitialized: function()
@@ -336,29 +328,19 @@ WebInspector.AuditCategory.prototype = {
     }
 }
 
-/**
- * @constructor
- * @param {string} id
- * @param {string} displayName
- */
+
 WebInspector.AuditRule = function(id, displayName)
 {
     this._id = id;
     this._displayName = displayName;
 }
 
-/**
- * @enum {string}
- */
 WebInspector.AuditRule.Severity = {
     Info: "info",
     Warning: "warning",
     Severe: "severe"
 }
 
-/**
- * @type {Object.<WebInspector.AuditRule.Severity, number>}
- */
 WebInspector.AuditRule.SeverityOrder = {
     "info": 3,
     "warning": 2,
@@ -376,45 +358,24 @@ WebInspector.AuditRule.prototype = {
         return this._displayName;
     },
 
-    /**
-     * @param {WebInspector.AuditRule.Severity} severity
-     */
     set severity(severity)
     {
         this._severity = severity;
     },
 
-    /**
-     * @param {!Array.<!WebInspector.NetworkRequest>} requests
-     * @param {function(WebInspector.AuditRuleResult)} callback
-     * @param {!WebInspector.Progress} progress
-     */
-    run: function(requests, callback, progress)
+    run: function(resources, callback)
     {
-        if (progress.isCanceled())
-            return;
-
         var result = new WebInspector.AuditRuleResult(this.displayName);
         result.severity = this._severity;
-        this.doRun(requests, result, callback, progress);
+        this.doRun(resources, result, callback);
     },
 
-    /**
-     * @param {Array.<WebInspector.NetworkRequest>} requests
-     * @param {WebInspector.AuditRuleResult} result
-     * @param {function(WebInspector.AuditRuleResult)} callback
-     * @param {WebInspector.Progress} progress
-     */
-    doRun: function(requests, result, callback, progress)
+    doRun: function(resources, result, callback)
     {
         throw new Error("doRun() not implemented");
     }
 }
 
-/**
- * @constructor
- * @param {!WebInspector.AuditCategory} category
- */
 WebInspector.AuditCategoryResult = function(category)
 {
     this.title = category.displayName;
@@ -422,42 +383,23 @@ WebInspector.AuditCategoryResult = function(category)
 }
 
 WebInspector.AuditCategoryResult.prototype = {
-    /**
-     * @param {!WebInspector.AuditCategoryResult} ruleResult
-     */
     addRuleResult: function(ruleResult)
     {
         this.ruleResults.push(ruleResult);
     }
 }
 
-/**
- * @constructor
- * @param {(string|boolean|number|Object)} value
- * @param {boolean=} expanded
- * @param {string=} className
- */
 WebInspector.AuditRuleResult = function(value, expanded, className)
 {
     this.value = value;
     this.className = className;
     this.expanded = expanded;
     this.violationCount = 0;
-    this._formatters = {
-        r: WebInspector.AuditRuleResult.linkifyDisplayName
-    };
-    var standardFormatters = Object.keys(String.standardFormatters);
-    for (var i = 0; i < standardFormatters.length; ++i)
-        this._formatters[standardFormatters[i]] = String.standardFormatters[standardFormatters[i]];
 }
 
-/**
- * @param {string} url
- * @return {!Element}
- */
 WebInspector.AuditRuleResult.linkifyDisplayName = function(url)
 {
-    return WebInspector.linkifyURLAsNode(url, WebInspector.displayNameForURL(url));
+    return WebInspector.linkifyURL(url, WebInspector.displayNameForURL(url));
 }
 
 WebInspector.AuditRuleResult.resourceDomain = function(domain)
@@ -466,12 +408,6 @@ WebInspector.AuditRuleResult.resourceDomain = function(domain)
 }
 
 WebInspector.AuditRuleResult.prototype = {
-    /**
-     * @param {(string|boolean|number|Object)} value
-     * @param {boolean=} expanded
-     * @param {string=} className
-     * @return {!WebInspector.AuditRuleResult}
-     */
     addChild: function(value, expanded, className)
     {
         if (!this.children)
@@ -481,65 +417,27 @@ WebInspector.AuditRuleResult.prototype = {
         return entry;
     },
 
-    /**
-     * @param {string} url
-     */
     addURL: function(url)
     {
-        this.addChild(WebInspector.AuditRuleResult.linkifyDisplayName(url));
+        return this.addChild(WebInspector.AuditRuleResult.linkifyDisplayName(url));
     },
 
-    /**
-     * @param {!Array.<string>} urls
-     */
     addURLs: function(urls)
     {
         for (var i = 0; i < urls.length; ++i)
             this.addURL(urls[i]);
     },
 
-    /**
-     * @param {string} snippet
-     */
     addSnippet: function(snippet)
     {
-        this.addChild(snippet, false, "source-code");
-    },
-
-    /**
-     * @param {string} format
-     * @param {...*} vararg
-     * @return {!WebInspector.AuditRuleResult}
-     */
-    addFormatted: function(format, vararg)
-    {
-        var substitutions = Array.prototype.slice.call(arguments, 1);
-        var fragment = document.createDocumentFragment();
-
-        function append(a, b)
-        {
-            if (!(b instanceof Node))
-                b = document.createTextNode(b);
-            a.appendChild(b);
-            return a;
-        }
-
-        var formattedResult = String.format(format, substitutions, this._formatters, fragment, append).formattedResult;
-        if (formattedResult instanceof Node)
-            formattedResult.normalize();
-        return this.addChild(formattedResult);
+        return this.addChild(snippet, false, "source-code");
     }
 }
 
-/**
- * @constructor
- * @extends {WebInspector.SidebarTreeElement}
- * @param {WebInspector.AuditsPanel} panel
- */
-WebInspector.AuditsSidebarTreeElement = function(panel)
+WebInspector.AuditsSidebarTreeElement = function()
 {
-    this._panel = panel;
     this.small = false;
+
     WebInspector.SidebarTreeElement.call(this, "audits-sidebar-tree-item", WebInspector.UIString("Audits"), "", null, false);
 }
 
@@ -551,7 +449,7 @@ WebInspector.AuditsSidebarTreeElement.prototype = {
 
     onselect: function()
     {
-        this._panel.showLauncherView();
+        WebInspector.panels.audits.showLauncherView();
     },
 
     get selectable()
@@ -562,52 +460,36 @@ WebInspector.AuditsSidebarTreeElement.prototype = {
     refresh: function()
     {
         this.refreshTitles();
-    },
-
-    __proto__: WebInspector.SidebarTreeElement.prototype
+    }
 }
 
-/**
- * @constructor
- * @extends {WebInspector.SidebarTreeElement}
- * @param {!WebInspector.AuditsPanel} panel
- * @param {!Array.<!WebInspector.AuditCategoryResult>} results
- * @param {string} mainResourceURL
- * @param {number} ordinal
- */
-WebInspector.AuditResultSidebarTreeElement = function(panel, results, mainResourceURL, ordinal)
+WebInspector.AuditsSidebarTreeElement.prototype.__proto__ = WebInspector.SidebarTreeElement.prototype;
+
+
+WebInspector.AuditResultSidebarTreeElement = function(results, mainResourceURL, ordinal)
 {
-    this._panel = panel;
     this.results = results;
     this.mainResourceURL = mainResourceURL;
+
     WebInspector.SidebarTreeElement.call(this, "audit-result-sidebar-tree-item", String.sprintf("%s (%d)", mainResourceURL, ordinal), "", {}, false);
 }
 
 WebInspector.AuditResultSidebarTreeElement.prototype = {
     onselect: function()
     {
-        this._panel.showResults(this.results);
+        WebInspector.panels.audits.showResults(this.results);
     },
 
     get selectable()
     {
         return true;
-    },
-
-    __proto__: WebInspector.SidebarTreeElement.prototype
+    }
 }
+
+WebInspector.AuditResultSidebarTreeElement.prototype.__proto__ = WebInspector.SidebarTreeElement.prototype;
 
 // Contributed audit rules should go into this namespace.
 WebInspector.AuditRules = {};
 
-/**
- * Contributed audit categories should go into this namespace.
- * @type {Object.<string, function(new:WebInspector.AuditCategory)>}
- */
+// Contributed audit categories should go into this namespace.
 WebInspector.AuditCategories = {};
-
-importScript("AuditCategories.js");
-importScript("AuditFormatters.js");
-importScript("AuditLauncherView.js");
-importScript("AuditResultView.js");
-importScript("AuditRules.js");

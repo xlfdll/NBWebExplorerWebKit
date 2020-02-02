@@ -28,97 +28,75 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/**
- * @constructor
- * @param {string=} title
- * @extends {WebInspector.View}
- */
 WebInspector.HelpScreen = function(title)
 {
-    WebInspector.View.call(this);
-    this.markAsRoot();
-    this.registerRequiredCSS("helpScreen.css");
+    this._addStyleSheetIfNeeded("helpScreen.css");
 
-    this.element.className = "help-window-outer";
-    this.element.addEventListener("keydown", this._onKeyDown.bind(this), false);
-    this.element.tabIndex = 0;
-    this.element.addEventListener("focus", this._onBlur.bind(this), false);
+    this._element = document.createElement("div");
+    this._element.className = "help-window-outer";
+    this._element.addEventListener("keydown", this._onKeyDown.bind(this), false);
 
-    if (title) {
-        var mainWindow = this.element.createChild("div", "help-window-main");
-        var captionWindow = mainWindow.createChild("div", "help-window-caption");
-        captionWindow.appendChild(this._createCloseButton());
-        this.contentElement = mainWindow.createChild("div", "help-content");
-        captionWindow.createChild("h1", "help-window-title").textContent = title;
-    }
+    var mainWindow = this._element.createChild("div", "help-window-main");
+    var captionWindow = mainWindow.createChild("div", "help-window-caption");
+    var closeButton = captionWindow.createChild("button", "help-close-button");
+    this.contentElement = mainWindow.createChild("div", "help-content");
+    this.contentElement.tabIndex = 0;
+    this.contentElement.addEventListener("blur", this._onBlur.bind(this), false);
+    captionWindow.createChild("h1", "help-window-title").innerText = title;
+
+    closeButton.innerText = "\u2716"; // Code stands for HEAVY MULTIPLICATION X.
+    closeButton.addEventListener("click", this._hide.bind(this), false);
+    this._closeKeys = [
+        WebInspector.KeyboardShortcut.Keys.Enter.code,
+        WebInspector.KeyboardShortcut.Keys.Esc.code,
+        WebInspector.KeyboardShortcut.Keys.Space.code,
+    ];
+    document.body.appendChild(this._element);
 }
 
-/**
- * @type {WebInspector.HelpScreen}
- */
-WebInspector.HelpScreen._visibleScreen = null;
-
 WebInspector.HelpScreen.prototype = {
-    _createCloseButton: function()
+    show: function()
     {
-        var closeButton = document.createElement("button");
-        closeButton.className = "help-close-button";
-        closeButton.textContent = "\u2716"; // Code stands for HEAVY MULTIPLICATION X.
-        closeButton.addEventListener("click", this.hide.bind(this), false);
-        return closeButton;
-    },
-
-    showModal: function()
-    {
-        var visibleHelpScreen = WebInspector.HelpScreen._visibleScreen;
-        if (visibleHelpScreen === this)
+        if (this._isShown)
             return;
 
-        if (visibleHelpScreen)
-            visibleHelpScreen.hide();
-        WebInspector.HelpScreen._visibleScreen = this;
-        this.show(document.body);
-        this.focus();
+        this._element.style.visibility = "visible";
+        this._isShown = true;
+        this._previousFocusElement = WebInspector.currentFocusElement;
+        WebInspector.currentFocusElement = this.contentElement;
     },
 
-    hide: function()
+    _hide: function()
     {
-        if (!this.isShowing())
-            return;
-
-        WebInspector.HelpScreen._visibleScreen = null;
-
-        WebInspector.restoreFocusFromElement(this.element);
-        this.detach();
-    },
-
-    /**
-     * @param {number} keyCode
-     * @return {boolean}
-     */
-    isClosingKey: function(keyCode)
-    {
-        return [
-            WebInspector.KeyboardShortcut.Keys.Enter.code,
-            WebInspector.KeyboardShortcut.Keys.Esc.code,
-            WebInspector.KeyboardShortcut.Keys.Space.code,
-        ].indexOf(keyCode) >= 0;
+        this._isShown = false;
+        this._element.style.visibility = "hidden";
+        WebInspector.currentFocusElement = this._previousFocusElement;
     },
 
     _onKeyDown: function(event)
     {
-        if (this.isShowing() && this.isClosingKey(event.keyCode)) {
-            this.hide();
-            event.consume();
+        if (this._isShown && this._closeKeys.indexOf(event.keyCode) >= 0) {
+            this._hide();
+            event.stopPropagation();
         }
     },
 
-    _onBlur: function(event)
+    _onBlur: function()
     {
-        // Pretend we're modal, grab focus back if we're still shown.
-        if (this.isShowing() && !this.element.isSelfOrAncestor(event.target))
-            WebInspector.setCurrentFocusElement(this.element);
+         // Pretend we're modal, grab focus back if we're still shown.
+        if (this._isShown)
+            WebInspector.currentFocusElement = this.contentElement;
     },
 
-    __proto__: WebInspector.View.prototype
-}
+    _addStyleSheetIfNeeded: function(href)
+    {
+        if (WebInspector.HelpScreen._styleSheetAdded)
+            return;
+       
+        WebInspector.HelpScreen._styleSheetAdded = true;
+        var link = document.head.createChild("link");
+        link.type = "text/css";
+        link.rel = "stylesheet";
+        link.href = href;
+    }
+};

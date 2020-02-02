@@ -23,10 +23,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/**
- * @constructor
- * @extends {WebInspector.View}
- */
 WebInspector.DatabaseQueryView = function(database)
 {
     WebInspector.View.call(this);
@@ -36,57 +32,57 @@ WebInspector.DatabaseQueryView = function(database)
     this.element.addStyleClass("storage-view");
     this.element.addStyleClass("query");
     this.element.addStyleClass("monospace");
+    this.element.tabIndex = 0;
+
     this.element.addEventListener("selectstart", this._selectStart.bind(this), false);
 
-    this._promptElement = document.createElement("div");
-    this._promptElement.className = "database-query-prompt";
-    this._promptElement.appendChild(document.createElement("br"));
-    this._promptElement.addEventListener("keydown", this._promptKeyDown.bind(this), true);
-    this.element.appendChild(this._promptElement);
+    this.promptElement = document.createElement("div");
+    this.promptElement.className = "database-query-prompt";
+    this.promptElement.appendChild(document.createElement("br"));
+    this.promptElement.addEventListener("keydown", this._promptKeyDown.bind(this), true);
+    this.element.appendChild(this.promptElement);
 
-    this.prompt = new WebInspector.TextPromptWithHistory(this.completions.bind(this), " ");
-    this.prompt.attach(this._promptElement);
-
-    this.element.addEventListener("click", this._messagesClicked.bind(this), true);
-}
-
-WebInspector.DatabaseQueryView.Events = {
-    SchemaUpdated: "SchemaUpdated"
+    this.prompt = new WebInspector.TextPrompt(this.promptElement, this.completions.bind(this), " ");
 }
 
 WebInspector.DatabaseQueryView.prototype = {
-    _messagesClicked: function()
+    show: function(parentElement)
     {
-        if (!this.prompt.isCaretInsidePrompt() && window.getSelection().isCollapsed)
-            this.prompt.moveCaretToEndOfPrompt();
+        WebInspector.View.prototype.show.call(this, parentElement);
+
+        function moveBackIfOutside()
+        {
+            if (!this.prompt.isCaretInsidePrompt() && window.getSelection().isCollapsed)
+                this.prompt.moveCaretToEndOfPrompt();
+        }
+
+        setTimeout(moveBackIfOutside.bind(this), 0);
     },
-    
-    /**
-     * @param {Element} proxyElement
-     * @param {Range} wordRange
-     * @param {boolean} force
-     * @param {function(Array.<string>, number=)} completionsReadyCallback
-     */
-    completions: function(proxyElement, wordRange, force, completionsReadyCallback)
+
+    completions: function(wordRange, bestMatchOnly, completionsReadyCallback)
     {
         var prefix = wordRange.toString().toLowerCase();
-        if (!prefix.length && !force)
+        if (!prefix.length)
             return;
 
         var results = [];
 
         function accumulateMatches(textArray)
         {
+            if (bestMatchOnly && results.length)
+                return;
             for (var i = 0; i < textArray.length; ++i) {
                 var text = textArray[i].toLowerCase();
                 if (text.length < prefix.length)
                     continue;
-                if (!text.startsWith(prefix))
+                if (text.indexOf(prefix) !== 0)
                     continue;
                 results.push(textArray[i]);
+                if (bestMatchOnly)
+                    return;
             }
         }
-
+        
         function tableNamesCallback(tableNames)
         {
             accumulateMatches(tableNames.map(function(name) { return name + " " }));
@@ -95,6 +91,14 @@ WebInspector.DatabaseQueryView.prototype = {
             completionsReadyCallback(results);
         }
         this.database.getTableNames(tableNamesCallback);
+    },
+
+    _promptKeyDown: function(event)
+    {
+        if (isEnterKey(event)) {
+            this._enterKeyPressed(event);
+            return;
+        }
     },
 
     _selectStart: function(event)
@@ -115,17 +119,10 @@ WebInspector.DatabaseQueryView.prototype = {
         this._selectionTimeout = setTimeout(moveBackIfOutside.bind(this), 100);
     },
 
-    _promptKeyDown: function(event)
-    {
-        if (isEnterKey(event)) {
-            this._enterKeyPressed(event);
-            return;
-        }
-    },
-
     _enterKeyPressed: function(event)
     {
-        event.consume(true);
+        event.preventDefault();
+        event.stopPropagation();
 
         this.prompt.clearAutoComplete(true);
 
@@ -133,62 +130,44 @@ WebInspector.DatabaseQueryView.prototype = {
         if (!query.length)
             return;
 
-        this.prompt.pushHistoryItem(query);
+        this.prompt.history.push(query);
+        this.prompt.historyOffset = 0;
         this.prompt.text = "";
 
         this.database.executeSql(query, this._queryFinished.bind(this, query), this._queryError.bind(this, query));
     },
 
-    _queryFinished: function(query, columnNames, values)
+    _queryFinished: function(query, result)
     {
-        var dataGrid = WebInspector.DataGrid.createSortableDataGrid(columnNames, values);
+        var dataGrid = WebInspector.panels.storage.dataGridForResult(result);
         var trimmedQuery = query.trim();
 
         if (dataGrid) {
             dataGrid.element.addStyleClass("inline");
-            this._appendViewQueryResult(trimmedQuery, dataGrid);
-            dataGrid.autoSizeColumns(5);
+            this._appendQueryResult(trimmedQuery, dataGrid.element);
+            dataGrid.autoSizeColumns(5);            
         }
 
         if (trimmedQuery.match(/^create /i) || trimmedQuery.match(/^drop table /i))
-            this.dispatchEventToListeners(WebInspector.DatabaseQueryView.Events.SchemaUpdated, this.database);
+            WebInspector.panels.storage.updateDatabaseTables(this.database);
     },
 
-    _queryError: function(query, errorMessage)
+    _queryError: function(query, error)
     {
-        this._appendErrorQueryResult(query, errorMessage);
+        if (error.code == 1)
+            var message = error.message;
+        else if (error.code == 2)
+            var message = WebInspector.UIString("Database no longer has expected version.");
+        else
+            var message = WebInspector.UIString("An unexpected error %s occurred.", error.code);
+
+        this._appendQueryResult(query, message, "error");
     },
 
-    /**
-     * @param {string} query
-     * @param {WebInspector.View} view
-     */
-    _appendViewQueryResult: function(query, view)
-    {
-        var resultElement = this._appendQueryResult(query);
-        view.show(resultElement);
-
-        this._promptElement.scrollIntoView(false);
-    },
-
-    /**
-     * @param {string} query
-     * @param {string} errorText
-     */
-    _appendErrorQueryResult: function(query, errorText)
-    {
-        var resultElement = this._appendQueryResult(query);
-        resultElement.addStyleClass("error")
-        resultElement.textContent = errorText;
-
-        this._promptElement.scrollIntoView(false);
-    },
-
-    _appendQueryResult: function(query)
+    _appendQueryResult: function(query, result, resultClassName)
     {
         var element = document.createElement("div");
         element.className = "database-user-query";
-        this.element.insertBefore(element, this.prompt.proxyElement);
 
         var commandTextElement = document.createElement("span");
         commandTextElement.className = "database-query-text";
@@ -197,9 +176,21 @@ WebInspector.DatabaseQueryView.prototype = {
 
         var resultElement = document.createElement("div");
         resultElement.className = "database-query-result";
-        element.appendChild(resultElement);
-        return resultElement;
-    },
 
-    __proto__: WebInspector.View.prototype
+        if (resultClassName)
+            resultElement.addStyleClass(resultClassName);
+
+        if (typeof result === "string" || result instanceof String)
+            resultElement.textContent = result;
+        else if (result && result.nodeName)
+            resultElement.appendChild(result);
+
+        if (resultElement.childNodes.length)
+            element.appendChild(resultElement);
+
+        this.element.insertBefore(element, this.promptElement);
+        this.promptElement.scrollIntoView(false);
+    }
 }
+
+WebInspector.DatabaseQueryView.prototype.__proto__ = WebInspector.View.prototype;

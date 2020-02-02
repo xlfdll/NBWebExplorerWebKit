@@ -23,10 +23,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/**
- * @constructor
- * @extends {WebInspector.View}
- */
 WebInspector.DatabaseTableView = function(database, tableName)
 {
     WebInspector.View.call(this);
@@ -38,52 +34,45 @@ WebInspector.DatabaseTableView = function(database, tableName)
     this.element.addStyleClass("table");
 
     this.refreshButton = new WebInspector.StatusBarButton(WebInspector.UIString("Refresh"), "refresh-storage-status-bar-item");
-    this.refreshButton.addEventListener("click", this._refreshButtonClicked, this);
+    this.refreshButton.addEventListener("click", this._refreshButtonClicked.bind(this), false);
 }
 
 WebInspector.DatabaseTableView.prototype = {
-    wasShown: function()
+    show: function(parentElement)
     {
+        WebInspector.View.prototype.show.call(this, parentElement);
         this.update();
     },
 
     get statusBarItems()
     {
-        return [this.refreshButton.element];
+        return [this.refreshButton];
     },
 
-    /**
-     * @param {string} tableName
-     * @return {string}
-     */
-    _escapeTableName: function(tableName)
-    {
-        return tableName.replace(/\"/g, "\"\"");
-    },
-    
     update: function()
     {
-        this.database.executeSql("SELECT * FROM \"" + this._escapeTableName(this.tableName) + "\"", this._queryFinished.bind(this), this._queryError.bind(this));
+        this.database.executeSql("SELECT * FROM " + this.tableName, this._queryFinished.bind(this), this._queryError.bind(this));
     },
 
-    _queryFinished: function(columnNames, values)
+    _queryFinished: function(result)
     {
-        this.detachChildViews();
         this.element.removeChildren();
 
-        var dataGrid = WebInspector.DataGrid.createSortableDataGrid(columnNames, values);
+        var dataGrid = WebInspector.panels.storage.dataGridForResult(result);
         if (!dataGrid) {
-            this._emptyView = new WebInspector.EmptyView(WebInspector.UIString("The “%s”\ntable is empty.", this.tableName));
-            this._emptyView.show(this.element);
+            var emptyMsgElement = document.createElement("div");
+            emptyMsgElement.className = "storage-table-empty";
+            emptyMsgElement.textContent = WebInspector.UIString("The “%s”\ntable is empty.", this.tableName);
+            this.element.appendChild(emptyMsgElement);
             return;
         }
-        dataGrid.show(this.element);
+
+        this.element.appendChild(dataGrid.element);
         dataGrid.autoSizeColumns(5);
     },
 
     _queryError: function(error)
     {
-        this.detachChildViews();
         this.element.removeChildren();
 
         var errorMsgElement = document.createElement("div");
@@ -95,7 +84,7 @@ WebInspector.DatabaseTableView.prototype = {
     _refreshButtonClicked: function(event)
     {
         this.update();
-    },
-
-    __proto__: WebInspector.View.prototype
+    }
 }
+
+WebInspector.DatabaseTableView.prototype.__proto__ = WebInspector.View.prototype;

@@ -23,23 +23,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/**
- * @constructor
- * @extends {TreeElement}
- */
 WebInspector.SidebarSectionTreeElement = function(title, representedObject, hasChildren)
 {
     TreeElement.call(this, title.escapeHTML(), representedObject || {}, hasChildren);
-    this.expand();
 }
 
 WebInspector.SidebarSectionTreeElement.prototype = {
     selectable: false,
-
-    collapse: function()
-    {
-        // Should not collapse as it is not selectable.
-    },
 
     get smallChildren()
     {
@@ -68,21 +58,14 @@ WebInspector.SidebarSectionTreeElement.prototype = {
     {
         if (this.listItemElement)
             this.listItemElement.scrollIntoViewIfNeeded(false);
-    },
-
-    __proto__: TreeElement.prototype
+    }
 }
 
-/**
- * @constructor
- * @extends {TreeElement}
- * @param {string=} subtitle
- * @param {Object=} representedObject
- * @param {boolean=} hasChildren
- */
+WebInspector.SidebarSectionTreeElement.prototype.__proto__ = TreeElement.prototype;
+
 WebInspector.SidebarTreeElement = function(className, title, subtitle, representedObject, hasChildren)
 {
-    TreeElement.call(this, "", representedObject, hasChildren);
+    TreeElement.call(this, "", representedObject || {}, hasChildren);
 
     if (hasChildren) {
         this.disclosureButton = document.createElement("button");
@@ -170,14 +153,6 @@ WebInspector.SidebarTreeElement.prototype = {
         this.bubbleElement.textContent = x;
     },
 
-    set wait(x)
-    {
-        if (x)
-            this._listItemNode.addStyleClass("wait");
-        else
-            this._listItemNode.removeStyleClass("wait");
-    },
-
     refreshTitles: function()
     {
         var mainTitle = this.mainTitle;
@@ -189,10 +164,8 @@ WebInspector.SidebarTreeElement.prototype = {
             if (this.subtitleElement.textContent !== subtitle)
                 this.subtitleElement.textContent = subtitle;
             this.titlesElement.removeStyleClass("no-subtitle");
-        } else {
-            this.subtitleElement.textContent = "";
+        } else
             this.titlesElement.addStyleClass("no-subtitle");
-        }
     },
 
     isEventWithinDisclosureTriangle: function(event)
@@ -222,7 +195,7 @@ WebInspector.SidebarTreeElement.prototype = {
     {
         if (this._listItemNode)
             this._listItemNode.scrollIntoViewIfNeeded(false);
-    },
-
-    __proto__: TreeElement.prototype
+    }
 }
+
+WebInspector.SidebarTreeElement.prototype.__proto__ = TreeElement.prototype;

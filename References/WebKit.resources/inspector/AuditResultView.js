@@ -28,33 +28,22 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/**
- * @constructor
- * @extends {WebInspector.SidebarPaneStack}
- * @param {!Array.<!WebInspector.AuditCategoryResult>} categoryResults
- */
 WebInspector.AuditResultView = function(categoryResults)
 {
-    WebInspector.SidebarPaneStack.call(this);
-    this.element.addStyleClass("audit-result-view");
+    WebInspector.View.call(this);
+    this.element.className = "audit-result-view";
 
     function categorySorter(a, b) {
         return (a.title || "").localeCompare(b.title || "");
     }
     categoryResults.sort(categorySorter);
     for (var i = 0; i < categoryResults.length; ++i)
-        this.addPane(new WebInspector.AuditCategoryResultPane(categoryResults[i]));
+        this.element.appendChild(new WebInspector.AuditCategoryResultPane(categoryResults[i]).element);
 }
 
-WebInspector.AuditResultView.prototype = {
-    __proto__: WebInspector.SidebarPaneStack.prototype
-}
+WebInspector.AuditResultView.prototype.__proto__ = WebInspector.View.prototype;
 
-/**
- * @constructor
- * @extends {WebInspector.SidebarPane}
- * @param {!WebInspector.AuditCategoryResult} categoryResult
- */
+
 WebInspector.AuditCategoryResultPane = function(categoryResult)
 {
     WebInspector.SidebarPane.call(this, categoryResult.title);
@@ -90,29 +79,17 @@ WebInspector.AuditCategoryResultPane = function(categoryResult)
 }
 
 WebInspector.AuditCategoryResultPane.prototype = {
-    /**
-     * @param {(TreeOutline|TreeElement)} parentTreeElement
-     * @param {!WebInspector.AuditRuleResult} result
-     */
     _appendResult: function(parentTreeElement, result)
     {
-        var title = "";
+        var title = result.value;
+        if (result.violationCount)
+            title = String.sprintf("%s (%d)", title, result.violationCount);
 
-        if (typeof result.value === "string") {
-            title = result.value;
-            if (result.violationCount)
-                title = String.sprintf("%s (%d)", title, result.violationCount);
-        }
-
-        var treeElement = new TreeElement(null, null, !!result.children);
-        treeElement.title = title;
+        var treeElement = new TreeElement(title, null, !!result.children);
         parentTreeElement.appendChild(treeElement);
 
         if (result.className)
             treeElement.listItemElement.addStyleClass(result.className);
-        if (typeof result.value !== "string")
-            treeElement.listItemElement.appendChild(WebInspector.auditFormatters.apply(result.value));
-
         if (result.children) {
             for (var i = 0; i < result.children.length; ++i)
                 this._appendResult(treeElement, result.children[i]);
@@ -123,7 +100,7 @@ WebInspector.AuditCategoryResultPane.prototype = {
             treeElement.expand();
         }
         return treeElement;
-    },
-
-    __proto__: WebInspector.SidebarPane.prototype
+    }
 }
+
+WebInspector.AuditCategoryResultPane.prototype.__proto__ = WebInspector.SidebarPane.prototype;
